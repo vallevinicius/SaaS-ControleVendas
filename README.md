@@ -1,4 +1,4 @@
-# Total Control — Controle de Estoque e Vendas
+# Total Control | Controle de Estoque e Vendas
 
 SaaS multi-tenant de PDV (Ponto de Venda) e controle de estoque, construído
 em **React + TypeScript + Vite + TailwindCSS** no frontend e
