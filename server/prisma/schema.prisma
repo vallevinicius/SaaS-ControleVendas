@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlanoSaaS {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum PapelUsuario {
+  ADMIN
+  GERENTE
+  OPERADOR_CAIXA
+}
+
+enum TipoMovimentacao {
+  ENTRADA
+  SAIDA
+}
+
+enum FormaPagamento {
+  PIX
+  CARTAO_CREDITO
+  CARTAO_DEBITO
+  DINHEIRO
+  BOLETO
+  OUTRO
+}
+
+enum TipoLancamentoFinanceiro {
+  RECEITA
+  DESPESA
+}
+
+model Tenant {
+  id                      String    @id @default(uuid())
+  nomeFantasia            String
+  razaoSocial             String?
+  cnpj                    String    @unique
+  planoAtual              PlanoSaaS @default(FREE)
+  logoDaLojaUrl           String    @db.Text
+  corPrincipalDoTema      String
+  corPrincipalHover       String?
+  fusoHorario             String    @default("America/Sao_Paulo")
+  moeda                   String    @default("BRL")
+  exigirSenhaAoAbrirCaixa Boolean   @default(false)
+  criadoEm                DateTime  @default(now())
+
+  usuarios              Usuario[]
+  categorias            Categoria[]
+  produtos              Produto[]
+  clientes              Cliente[]
+  transacoes            Transacao[]
+  lancamentosFinanceiros LancamentoFinanceiro[]
+}
+
+model Usuario {
+  id        String       @id @default(uuid())
+  tenantId  String
+  nome      String
+  email     String       @unique
+  senhaHash String
+  papel     PapelUsuario @default(OPERADOR_CAIXA)
+  ativo     Boolean      @default(true)
+  criadoEm  DateTime     @default(now())
+
+  tenant                 Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transacoes             Transacao[]
+  lancamentosFinanceiros LancamentoFinanceiro[]
+
+  @@index([tenantId])
+}
+
+model Categoria {
+  id                     String  @id @default(uuid())
+  tenantId               String
+  nome                   String
+  atributosCustomizados  Json?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  produtos Produto[]
+
+  @@index([tenantId])
+}
+
+model Produto {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  nome                  String
+  sku                   String
+  categoriaId           String
+  precoCusto            Decimal  @db.Decimal(12, 2)
+  precoVenda            Decimal  @db.Decimal(12, 2)
+  quantidadeEmEstoque   Int      @default(0)
+  estoqueMinimo         Int      @default(0)
+  atributosCustomizados Json?
+  ativo                 Boolean  @default(true)
+  criadoEm              DateTime @default(now())
+  atualizadoEm          DateTime @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoria      Categoria       @relation(fields: [categoriaId], references: [id])
+  itensTransacao ItemTransacao[]
+
+  @@unique([tenantId, sku])
+  @@index([categoriaId])
+}
+
+model Cliente {
+  id        String   @id @default(uuid())
+  tenantId  String
+  nome      String
+  telefone  String?
+  email     String?
+  cpfCnpj   String?
+  criadoEm  DateTime @default(now())
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transacoes Transacao[]
+
+  @@index([tenantId])
+}
+
+model Transacao {
+  id             String            @id @default(uuid())
+  tenantId       String
+  tipo           TipoMovimentacao
+  timestamp      DateTime          @default(now())
+  valorTotal     Decimal           @db.Decimal(12, 2)
+  desconto       Decimal           @default(0) @db.Decimal(12, 2)
+  taxas          Decimal           @default(0) @db.Decimal(12, 2)
+  formaPagamento FormaPagamento?
+  usuarioId      String
+  clienteId      String?
+  observacao     String?
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usuario  Usuario         @relation(fields: [usuarioId], references: [id])
+  cliente  Cliente?        @relation(fields: [clienteId], references: [id])
+  itens    ItemTransacao[]
+
+  @@index([tenantId, timestamp])
+}
+
+model ItemTransacao {
+  id                     String  @id @default(uuid())
+  transacaoId            String
+  productId              String
+  nomeProdutoSnapshot    String
+  quantidade             Int
+  valorUnitarioPraticado Decimal @db.Decimal(12, 2)
+  subtotal               Decimal @db.Decimal(12, 2)
+
+  transacao Transacao @relation(fields: [transacaoId], references: [id], onDelete: Cascade)
+  produto   Produto   @relation(fields: [productId], references: [id])
+
+  @@index([transacaoId])
+  @@index([productId])
+}
+
+model LancamentoFinanceiro {
+  id         String                   @id @default(uuid())
+  tenantId   String
+  tipo       TipoLancamentoFinanceiro
+  categoria  String
+  descricao  String?
+  valor      Decimal                  @db.Decimal(12, 2)
+  data       DateTime
+  usuarioId  String
+  criadoEm   DateTime                 @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([tenantId, data])
+}
+
+/// Conta interna da Total Software (dona do SaaS) — não pertence a nenhum
+/// tenant, usada apenas pelo painel administrativo em /admin.
+model AdminPlataforma {
+  id        String   @id @default(uuid())
+  nome      String
+  email     String   @unique
+  senhaHash String
+  criadoEm  DateTime @default(now())
+}

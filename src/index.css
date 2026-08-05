@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Valores padrão de fallback — sempre sobrescritos em runtime
+     pelo TenantProvider a partir de tenant.configuracoes.corPrincipalDoTema */
+  --tenant-primary: #d97706;
+  --tenant-primary-hover: #b45309;
+  --tenant-primary-soft: rgba(217, 119, 6, 0.14);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-900 text-ink-100 font-sans antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: theme('colors.ink.600');
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
