@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { LoadingState } from '@/components/Common/LoadingState';
 import { useTenant } from '@/contexts/TenantContext';
+import { useToast } from '@/contexts/ToastContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { getResumoFinanceiro, getLancamentos, createLancamento, deleteLancamento } from '@/services/apiService';
 import { formatarMoeda, formatarDataHora } from '@/utils/formatters';
 import type { LancamentoFinanceiro, ResumoFinanceiro, TipoLancamentoFinanceiro } from '@/types';
@@ -17,6 +19,8 @@ function hoje(): string {
 
 export function FinanceiroScreen() {
   const { tenant } = useTenant();
+  const toast = useToast();
+  const confirmar = useConfirm();
   const [inicio, setInicio] = useState(inicioDoMesAtual());
   const [fim, setFim] = useState(hoje());
   const [resumo, setResumo] = useState<ResumoFinanceiro | null>(null);
@@ -30,7 +34,6 @@ export function FinanceiroScreen() {
   const [valor, setValor] = useState<number>(0);
   const [data, setData] = useState(hoje());
   const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
 
   async function carregar() {
     setCarregando(true);
@@ -52,24 +55,36 @@ export function FinanceiroScreen() {
     e.preventDefault();
     if (!categoria.trim() || valor <= 0) return;
     setEnviando(true);
-    setErro(null);
     try {
       await createLancamento({ tipo, categoria: categoria.trim(), descricao: descricao || undefined, valor, data });
+      toast.sucesso(`${tipo === 'RECEITA' ? 'Receita' : 'Despesa'} lançada.`);
       setCategoria('');
       setDescricao('');
       setValor(0);
       setMostrarFormulario(false);
       await carregar();
     } catch (err) {
-      setErro(err instanceof Error ? err.message : 'Erro ao lançar.');
+      toast.erro(err instanceof Error ? err.message : 'Erro ao lançar.');
     } finally {
       setEnviando(false);
     }
   }
 
-  async function handleExcluir(id: string) {
-    await deleteLancamento(id);
-    await carregar();
+  async function handleExcluir(lancamento: LancamentoFinanceiro) {
+    const confirmou = await confirmar({
+      titulo: `Excluir lançamento "${lancamento.categoria}"?`,
+      textoConfirmar: 'Excluir',
+      perigoso: true,
+    });
+    if (!confirmou) return;
+
+    try {
+      await deleteLancamento(lancamento.id);
+      await carregar();
+      toast.sucesso('Lançamento excluído.');
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Erro ao excluir lançamento.');
+    }
   }
 
   return (
@@ -174,8 +189,6 @@ export function FinanceiroScreen() {
             />
           </label>
 
-          {erro && <p className="col-span-5 rounded-lg bg-red-500/15 px-3 py-2 text-xs text-red-400">{erro}</p>}
-
           <div className="col-span-5 flex justify-end">
             <button
               type="submit"
@@ -260,7 +273,7 @@ export function FinanceiroScreen() {
                       <td className="px-5 py-3.5 text-ink-300">{l.descricao ?? '—'}</td>
                       <td className="px-5 py-3.5 text-right font-mono text-ink-100">{formatarMoeda(l.valor, tenant)}</td>
                       <td className="px-5 py-3.5 text-right">
-                        <button onClick={() => handleExcluir(l.id)} className="text-xs text-ink-400 hover:text-red-400">
+                        <button onClick={() => handleExcluir(l)} className="text-xs text-ink-400 hover:text-red-400">
                           Excluir
                         </button>
                       </td>

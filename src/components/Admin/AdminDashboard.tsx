@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import { adminListTenants, adminSetPlano, adminSetUsuarioAtivo, adminResetarSenha } from '@/services/adminApiService';
 import type { PlanoSaaS, TenantAdmin } from '@/types';
 
@@ -13,19 +14,18 @@ const rotulosPapel: Record<string, string> = {
 
 export function AdminDashboard() {
   const { logout } = useAdminAuth();
+  const toast = useToast();
   const [tenants, setTenants] = useState<TenantAdmin[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [tenantExpandido, setTenantExpandido] = useState<string | null>(null);
   const [senhaGerada, setSenhaGerada] = useState<{ usuarioNome: string; senha: string } | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
 
   async function carregar() {
     setCarregando(true);
-    setErro(null);
     try {
       setTenants(await adminListTenants());
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Erro ao carregar lojas.');
+      toast.erro(e instanceof Error ? e.message : 'Erro ao carregar lojas.');
     } finally {
       setCarregando(false);
     }
@@ -33,21 +33,36 @@ export function AdminDashboard() {
 
   useEffect(() => {
     carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleTrocarPlano(tenantId: string, planoAtual: PlanoSaaS) {
-    await adminSetPlano(tenantId, planoAtual);
-    await carregar();
+    try {
+      await adminSetPlano(tenantId, planoAtual);
+      await carregar();
+      toast.sucesso(`Plano alterado para ${planoAtual}.`);
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao trocar plano.');
+    }
   }
 
   async function handleToggleAtivo(usuarioId: string, ativo: boolean) {
-    await adminSetUsuarioAtivo(usuarioId, ativo);
-    await carregar();
+    try {
+      await adminSetUsuarioAtivo(usuarioId, ativo);
+      await carregar();
+      toast.sucesso(ativo ? 'Usuário ativado.' : 'Usuário desativado.');
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao atualizar usuário.');
+    }
   }
 
   async function handleResetarSenha(usuarioId: string, usuarioNome: string) {
-    const senha = await adminResetarSenha(usuarioId);
-    setSenhaGerada({ usuarioNome, senha });
+    try {
+      const senha = await adminResetarSenha(usuarioId);
+      setSenhaGerada({ usuarioNome, senha });
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao resetar senha.');
+    }
   }
 
   return (
@@ -69,8 +84,6 @@ export function AdminDashboard() {
         <p className="mb-6 text-sm text-zinc-400">
           {tenants.length} loja(s) cadastrada(s) na plataforma.
         </p>
-
-        {erro && <p className="mb-4 rounded-lg bg-red-500/15 px-3 py-2 text-xs text-red-400">{erro}</p>}
 
         {carregando ? (
           <p className="text-sm text-zinc-500">Carregando…</p>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { useTenant } from '@/contexts/TenantContext';
+import { useToast } from '@/contexts/ToastContext';
 import { searchProducts, registerSale, getClientes } from '@/services/apiService';
 import { formatarMoeda } from '@/utils/formatters';
 import type { Cliente, FormaPagamento, Produto } from '@/types';
@@ -30,13 +31,13 @@ const formasPagamento: Array<{ valor: FormaPagamento; rotulo: string }> = [
  */
 export function PDVScreen() {
   const { tenant } = useTenant();
+  const toast = useToast();
   const [termoBusca, setTermoBusca] = useState('');
   const [resultados, setResultados] = useState<Produto[]>([]);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('PIX');
   const [desconto, setDesconto] = useState<number>(0);
   const [processando, setProcessando] = useState(false);
-  const [mensagem, setMensagem] = useState<{ tipo: 'erro' | 'sucesso'; texto: string } | null>(null);
 
   const [termoCliente, setTermoCliente] = useState('');
   const [resultadosClientes, setResultadosClientes] = useState<Cliente[]>([]);
@@ -101,7 +102,6 @@ export function PDVScreen() {
   async function finalizarVenda() {
     if (carrinho.length === 0) return;
     setProcessando(true);
-    setMensagem(null);
     try {
       await registerSale({
         itens: carrinho.map((i) => ({ productId: i.produto.id, quantidade: i.quantidade })),
@@ -110,13 +110,13 @@ export function PDVScreen() {
         formaPagamento,
         clienteId: clienteSelecionado?.id,
       });
-      setMensagem({ tipo: 'sucesso', texto: `Venda finalizada às ${new Date().toLocaleTimeString('pt-BR')}.` });
+      toast.sucesso(`Venda finalizada às ${new Date().toLocaleTimeString('pt-BR')}.`);
       setCarrinho([]);
       setDesconto(0);
       setClienteSelecionado(null);
       setTermoCliente('');
     } catch (erro) {
-      setMensagem({ tipo: 'erro', texto: erro instanceof Error ? erro.message : 'Erro ao finalizar venda.' });
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao finalizar venda.');
     } finally {
       setProcessando(false);
     }
@@ -290,17 +290,6 @@ export function PDVScreen() {
               ))}
             </div>
           </div>
-
-          {mensagem && (
-            <div
-              className={[
-                'mt-4 rounded-lg px-3 py-2 text-xs',
-                mensagem.tipo === 'erro' ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-400',
-              ].join(' ')}
-            >
-              {mensagem.texto}
-            </div>
-          )}
 
           <button
             onClick={finalizarVenda}

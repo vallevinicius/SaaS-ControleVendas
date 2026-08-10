@@ -1,25 +1,25 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
+import { useToast } from '@/contexts/ToastContext';
 import { AuthLayout } from './AuthLayout';
 
 export function LoginScreen() {
   const { login } = useTenant();
+  const toast = useToast();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setEnviando(true);
-    setMensagemErro(null);
     try {
       await login(email, senha);
       navigate('/', { replace: true });
     } catch (erro) {
-      setMensagemErro(erro instanceof Error ? erro.message : 'Erro ao entrar.');
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao entrar.');
     } finally {
       setEnviando(false);
     }
@@ -61,8 +61,6 @@ export function LoginScreen() {
             className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
           />
         </label>
-
-        {mensagemErro && <p className="rounded-lg bg-red-500/15 px-3 py-2 text-xs text-red-400">{mensagemErro}</p>}
 
         <button
           type="submit"

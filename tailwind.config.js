@@ -23,8 +23,11 @@ export default {
         },
       },
       fontFamily: {
-        display: ['"Fraunces"', 'serif'],
-        sans: ['"Inter"', 'system-ui', 'sans-serif'],
+        // Uma família só para todo o site (títulos e corpo) — sem mistura
+        // de serifa decorativa com sans, que é a assinatura visual mais
+        // reconhecível de "gerado por IA" nesse tipo de UI.
+        display: ['"Manrope"', 'system-ui', 'sans-serif'],
+        sans: ['"Manrope"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'monospace'],
       },
     },

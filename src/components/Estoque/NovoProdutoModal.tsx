@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useToast } from '@/contexts/ToastContext';
 import type { Categoria } from '@/types';
 import type { NovoProdutoPayload } from '@/services/apiService';
 
@@ -10,6 +11,7 @@ interface NovoProdutoModalProps {
 }
 
 export function NovoProdutoModal({ categorias, aoFechar, aoConfirmar, aoCriarCategoria }: NovoProdutoModalProps) {
+  const toast = useToast();
   const [nome, setNome] = useState('');
   const [sku, setSku] = useState('');
   const [categoriaId, setCategoriaId] = useState(categorias[0]?.id ?? '');
@@ -20,7 +22,6 @@ export function NovoProdutoModal({ categorias, aoFechar, aoConfirmar, aoCriarCat
   const [quantidadeEmEstoque, setQuantidadeEmEstoque] = useState<number>(0);
   const [estoqueMinimo, setEstoqueMinimo] = useState<number>(0);
   const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
 
   async function handleCriarCategoria() {
     const nomeLimpo = novaCategoria.trim();
@@ -30,6 +31,8 @@ export function NovoProdutoModal({ categorias, aoFechar, aoConfirmar, aoCriarCat
       const categoria = await aoCriarCategoria(nomeLimpo);
       setCategoriaId(categoria.id);
       setNovaCategoria('');
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao criar categoria.');
     } finally {
       setCriandoCategoria(false);
     }
@@ -37,10 +40,9 @@ export function NovoProdutoModal({ categorias, aoFechar, aoConfirmar, aoCriarCat
 
   async function handleConfirmar() {
     if (!nome.trim() || !sku.trim() || !categoriaId) {
-      setErro('Preencha nome, SKU e categoria.');
+      toast.erro('Preencha nome, SKU e categoria.');
       return;
     }
-    setErro(null);
     setEnviando(true);
     try {
       await aoConfirmar({
@@ -52,9 +54,10 @@ export function NovoProdutoModal({ categorias, aoFechar, aoConfirmar, aoCriarCat
         quantidadeEmEstoque,
         estoqueMinimo,
       });
+      toast.sucesso(`Produto "${nome.trim()}" cadastrado.`);
       aoFechar();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Erro ao cadastrar produto.');
+      toast.erro(e instanceof Error ? e.message : 'Erro ao cadastrar produto.');
     } finally {
       setEnviando(false);
     }
@@ -164,8 +167,6 @@ export function NovoProdutoModal({ categorias, aoFechar, aoConfirmar, aoCriarCat
             </label>
           </div>
         </div>
-
-        {erro && <p className="mt-4 rounded-lg bg-red-500/15 px-3 py-2 text-xs text-red-400">{erro}</p>}
 
         <div className="mt-6 flex justify-end gap-3">
           <button onClick={aoFechar} className="rounded-lg px-4 py-2 text-sm text-ink-300 hover:text-ink-100">

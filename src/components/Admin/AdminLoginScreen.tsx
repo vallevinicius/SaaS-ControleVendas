@@ -1,24 +1,24 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
+import { useToast } from '@/contexts/ToastContext';
 
 export function AdminLoginScreen() {
   const { login } = useAdminAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setEnviando(true);
-    setMensagemErro(null);
     try {
       await login(email, senha);
       navigate('/admin', { replace: true });
     } catch (erro) {
-      setMensagemErro(erro instanceof Error ? erro.message : 'Erro ao entrar.');
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao entrar.');
     } finally {
       setEnviando(false);
     }
@@ -59,8 +59,6 @@ export function AdminLoginScreen() {
                 className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 focus:border-zinc-400 focus:outline-none"
               />
             </label>
-
-            {mensagemErro && <p className="rounded-lg bg-red-500/15 px-3 py-2 text-xs text-red-400">{mensagemErro}</p>}
 
             <button
               type="submit"

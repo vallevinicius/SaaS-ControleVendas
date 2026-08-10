@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { LoadingState } from '@/components/Common/LoadingState';
+import { useToast } from '@/contexts/ToastContext';
 import { getClientes, createCliente } from '@/services/apiService';
 import type { Cliente } from '@/types';
 
 export function ClientesScreen() {
+  const toast = useToast();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -14,7 +16,6 @@ export function ClientesScreen() {
   const [email, setEmail] = useState('');
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
 
   async function carregarClientes() {
     setCarregando(true);
@@ -30,9 +31,9 @@ export function ClientesScreen() {
     e.preventDefault();
     if (!nome.trim()) return;
     setEnviando(true);
-    setErro(null);
     try {
       await createCliente({ nome: nome.trim(), telefone: telefone || undefined, email: email || undefined, cpfCnpj: cpfCnpj || undefined });
+      toast.sucesso(`Cliente "${nome.trim()}" cadastrado.`);
       setNome('');
       setTelefone('');
       setEmail('');
@@ -40,7 +41,7 @@ export function ClientesScreen() {
       setMostrarFormulario(false);
       await carregarClientes();
     } catch (err) {
-      setErro(err instanceof Error ? err.message : 'Erro ao cadastrar cliente.');
+      toast.erro(err instanceof Error ? err.message : 'Erro ao cadastrar cliente.');
     } finally {
       setEnviando(false);
     }
@@ -97,8 +98,6 @@ export function ClientesScreen() {
               className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
             />
           </label>
-
-          {erro && <p className="col-span-2 rounded-lg bg-red-500/15 px-3 py-2 text-xs text-red-400">{erro}</p>}
 
           <div className="col-span-2 flex justify-end">
             <button

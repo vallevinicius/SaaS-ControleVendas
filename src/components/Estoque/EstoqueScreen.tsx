@@ -3,7 +3,16 @@ import { AppLayout } from '@/components/Layout/AppLayout';
 import { LoadingState } from '@/components/Common/LoadingState';
 import { EstoqueBadge } from '@/components/Common/EstoqueBadge';
 import { useTenant } from '@/contexts/TenantContext';
-import { getProducts, getCategorias, registerStockEntry, createProduct, createCategoria } from '@/services/apiService';
+import { useToast } from '@/contexts/ToastContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
+import {
+  getProducts,
+  getCategorias,
+  registerStockEntry,
+  createProduct,
+  createCategoria,
+  deactivateProduct,
+} from '@/services/apiService';
 import { formatarMoeda } from '@/utils/formatters';
 import type { Categoria, Produto } from '@/types';
 import { EntradaEstoqueModal } from './EntradaEstoqueModal';
@@ -11,6 +20,8 @@ import { NovoProdutoModal } from './NovoProdutoModal';
 
 export function EstoqueScreen() {
   const { tenant } = useTenant();
+  const toast = useToast();
+  const confirmar = useConfirm();
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -35,8 +46,31 @@ export function EstoqueScreen() {
   }
 
   async function confirmarEntrada(produto: Produto, quantidade: number, precoCustoUnitario?: number) {
-    await registerStockEntry({ productId: produto.id, quantidade, precoCustoUnitario });
-    await carregarDados();
+    try {
+      await registerStockEntry({ productId: produto.id, quantidade, precoCustoUnitario });
+      await carregarDados();
+      toast.sucesso(`Entrada de ${quantidade} un. registrada em "${produto.nome}".`);
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao registrar entrada de estoque.');
+    }
+  }
+
+  async function excluirProduto(produto: Produto) {
+    const confirmou = await confirmar({
+      titulo: `Excluir "${produto.nome}"?`,
+      descricao: 'Ele deixará de aparecer no estoque e no PDV.',
+      textoConfirmar: 'Excluir',
+      perigoso: true,
+    });
+    if (!confirmou) return;
+
+    try {
+      await deactivateProduct(produto.id);
+      await carregarDados();
+      toast.sucesso(`"${produto.nome}" excluído.`);
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao excluir produto.');
+    }
   }
 
   const produtosComEstoqueBaixo = produtos.filter((p) => p.quantidadeEmEstoque <= p.estoqueMinimo).length;
@@ -97,12 +131,20 @@ export function EstoqueScreen() {
                     <EstoqueBadge quantidadeEmEstoque={produto.quantidadeEmEstoque} estoqueMinimo={produto.estoqueMinimo} />
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <button
-                      onClick={() => setProdutoParaEntrada(produto)}
-                      className="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 hover:border-tenant hover:text-tenant"
-                    >
-                      + Entrada
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setProdutoParaEntrada(produto)}
+                        className="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 hover:border-tenant hover:text-tenant"
+                      >
+                        + Entrada
+                      </button>
+                      <button
+                        onClick={() => excluirProduto(produto)}
+                        className="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 hover:border-red-400 hover:text-red-400"
+                      >
+                        Excluir
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

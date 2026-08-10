@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { TenantProvider, useTenant } from '@/contexts/TenantContext';
 import { AdminAuthProvider, useAdminAuth } from '@/contexts/AdminAuthContext';
+import { ToastProvider } from '@/contexts/ToastContext';
+import { ConfirmProvider } from '@/contexts/ConfirmContext';
 import { LoadingState } from '@/components/Common/LoadingState';
 import { DashboardScreen } from '@/components/Dashboard/DashboardScreen';
 import { PDVScreen } from '@/components/PDV/PDVScreen';
@@ -147,12 +149,16 @@ function Roteador() {
 
 export default function App() {
   return (
-    <TenantProvider>
-      <AdminAuthProvider>
-        <BrowserRouter>
-          <Roteador />
-        </BrowserRouter>
-      </AdminAuthProvider>
-    </TenantProvider>
+    <ToastProvider>
+      <ConfirmProvider>
+        <TenantProvider>
+          <AdminAuthProvider>
+            <BrowserRouter>
+              <Roteador />
+            </BrowserRouter>
+          </AdminAuthProvider>
+        </TenantProvider>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }
