@@ -8,6 +8,7 @@ import type {
   ResumoFinanceiro,
   Tenant,
   Transacao,
+  TelaComPermissao,
   TipoLancamentoFinanceiro,
   Usuario,
   FormaPagamento,
@@ -93,6 +94,8 @@ export async function login(email: string, senha: string): Promise<void> {
 export interface RegistrarLojaPayload {
   nomeFantasia: string;
   cnpj: string;
+  telefone?: string;
+  emailContato?: string;
   nomeAdmin: string;
   email: string;
   senha: string;
@@ -189,9 +192,10 @@ export async function createCliente(dados: NovoClientePayload): Promise<Cliente>
 // ----------------------------------------------------------------------------
 
 export interface NovaVendaPayload {
-  itens: Array<{ productId: string; quantidade: number }>;
+  itens: Array<{ productId: string; quantidade: number; precoUnitario?: number }>;
   desconto?: number;
   taxas?: number;
+  parcelas?: number;
   formaPagamento: FormaPagamento;
   clienteId?: string;
 }
@@ -268,4 +272,32 @@ export async function createLancamento(payload: NovoLancamentoPayload): Promise<
 
 export async function deleteLancamento(id: string): Promise<void> {
   await requisitar(`/financeiro/lancamentos/${id}`, { method: 'DELETE' });
+}
+
+// ----------------------------------------------------------------------------
+// USUÁRIOS (logins da própria loja)
+// ----------------------------------------------------------------------------
+
+export async function getUsuarios(): Promise<Usuario[]> {
+  return requisitar('/usuarios');
+}
+
+export interface NovoUsuarioPayload {
+  nome: string;
+  email: string;
+  senha: string;
+  papel: 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
+  permissoes: TelaComPermissao[];
+}
+
+export async function createUsuario(dados: NovoUsuarioPayload): Promise<Usuario> {
+  return requisitar('/usuarios', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function setUsuarioAtivo(id: string, ativo: boolean): Promise<void> {
+  await requisitar(`/usuarios/${id}/ativo`, { method: 'PUT', body: JSON.stringify({ ativo }) });
+}
+
+export async function setUsuarioPermissoes(id: string, permissoes: TelaComPermissao[]): Promise<Usuario> {
+  return requisitar(`/usuarios/${id}/permissoes`, { method: 'PUT', body: JSON.stringify({ permissoes }) });
 }

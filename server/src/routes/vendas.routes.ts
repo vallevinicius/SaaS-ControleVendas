@@ -14,6 +14,7 @@ function serializarTransacao(t: {
   valorTotal: unknown;
   desconto: unknown;
   taxas: unknown;
+  parcelas: number;
   formaPagamento: string | null;
   usuarioId: string;
   clienteId: string | null;
@@ -41,6 +42,7 @@ function serializarTransacao(t: {
     valorTotal: Number(t.valorTotal),
     desconto: Number(t.desconto),
     taxas: Number(t.taxas),
+    parcelas: t.parcelas,
     formaPagamento: t.formaPagamento ?? undefined,
     usuarioId: t.usuarioId,
     clienteId: t.clienteId ?? undefined,
@@ -59,9 +61,20 @@ vendasRouter.get('/', async (req, res) => {
 });
 
 const novaVendaSchema = z.object({
-  itens: z.array(z.object({ productId: z.string().min(1), quantidade: z.number().int().positive() })).min(1),
+  itens: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        quantidade: z.number().int().positive(),
+        // Preço praticado nesse item, se o operador ajustou manualmente na
+        // hora da venda. Se ausente, usa o preço de venda atual do produto.
+        precoUnitario: z.number().nonnegative().optional(),
+      }),
+    )
+    .min(1),
   desconto: z.number().nonnegative().optional(),
   taxas: z.number().nonnegative().optional(),
+  parcelas: z.number().int().min(1).max(3).optional(),
   formaPagamento: z.enum(['PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'BOLETO', 'OUTRO']),
   clienteId: z.string().optional(),
 });
@@ -72,7 +85,7 @@ vendasRouter.post('/', async (req, res) => {
   if (!parse.success) {
     return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
   }
-  const { itens, desconto = 0, taxas = 0, formaPagamento, clienteId } = parse.data;
+  const { itens, desconto = 0, taxas = 0, parcelas = 1, formaPagamento, clienteId } = parse.data;
 
   try {
     const transacao = await prisma.$transaction(async (tx) => {
@@ -90,7 +103,7 @@ vendasRouter.post('/', async (req, res) => {
         if (produto.quantidadeEmEstoque < item.quantidade) {
           throw new Error(`Estoque insuficiente para "${produto.nome}". Disponível: ${produto.quantidadeEmEstoque}.`);
         }
-        const valorUnitario = Number(produto.precoVenda);
+        const valorUnitario = item.precoUnitario ?? Number(produto.precoVenda);
         itensResolvidos.push({
           productId: produto.id,
           nomeProdutoSnapshot: produto.nome,
@@ -110,6 +123,7 @@ vendasRouter.post('/', async (req, res) => {
           valorTotal,
           desconto,
           taxas,
+          parcelas,
           formaPagamento,
           usuarioId,
           clienteId: clienteId || undefined,

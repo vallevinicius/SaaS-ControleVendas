@@ -37,18 +37,34 @@ export interface Tenant {
   nomeFantasia: string;
   razaoSocial?: string;
   cnpj: string;
+  /** Meios de contato da empresa — não é o e-mail de login de nenhum usuário. */
+  telefone?: string;
+  email?: string;
   planoAtual: PlanoSaaS;
   configuracoes: TenantConfiguracoes;
   criadoEm: string; // ISO date
 }
 
 /** Usuário operador do sistema, sempre vinculado a um tenant. */
+export type PapelUsuario = 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
+
+/** Chave de cada tela que pode ter acesso concedido/negado por usuário. */
+export type TelaComPermissao = 'dashboard' | 'pdv' | 'estoque' | 'financeiro' | 'clientes' | 'relatorios';
+
 export interface Usuario {
   id: string;
   tenantId: string;
   nome: string;
   email: string;
-  papel: 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
+  papel: PapelUsuario;
+  /**
+   * Telas que este usuário pode acessar. `undefined` = acesso total (contas
+   * ADMIN sempre ignoram este campo; contas antigas sem o campo também
+   * caem nesse caso, por compatibilidade).
+   */
+  permissoes?: TelaComPermissao[];
+  /** Conta principal da loja (criada no cadastro) — nunca pode ser desativada. */
+  raiz?: boolean;
   ativo: boolean;
 }
 
@@ -116,6 +132,8 @@ export interface Transacao {
   valorTotal: number;
   desconto: number;
   taxas: number;
+  /** Número de parcelas — só relevante para CARTAO_CREDITO. */
+  parcelas: number;
   formaPagamento?: FormaPagamento; // aplicável a SAIDA (venda)
   usuarioId: string;
   observacao?: string;
@@ -228,7 +246,10 @@ export interface TenantAdmin {
   nomeFantasia: string;
   razaoSocial?: string;
   cnpj: string;
+  telefone?: string;
+  email?: string;
   planoAtual: PlanoSaaS;
+  ativo: boolean;
   criadoEm: string;
   usuarios: UsuarioAdmin[];
 }

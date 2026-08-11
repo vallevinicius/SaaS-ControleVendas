@@ -59,8 +59,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 onClick={() => responder(true)}
                 autoFocus
                 className={[
-                  'rounded-lg px-4 py-2 text-sm font-semibold text-white hover:opacity-90',
-                  opcoes.perigoso ? 'bg-red-600' : 'bg-tenant',
+                  'rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90',
+                  opcoes.perigoso ? 'bg-red-600 text-white' : 'bg-tenant text-tenant-foreground',
                 ].join(' ')}
               >
                 {opcoes.textoConfirmar ?? 'Confirmar'}

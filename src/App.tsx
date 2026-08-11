@@ -4,6 +4,7 @@ import { TenantProvider, useTenant } from '@/contexts/TenantContext';
 import { AdminAuthProvider, useAdminAuth } from '@/contexts/AdminAuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ConfirmProvider } from '@/contexts/ConfirmContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LoadingState } from '@/components/Common/LoadingState';
 import { DashboardScreen } from '@/components/Dashboard/DashboardScreen';
 import { PDVScreen } from '@/components/PDV/PDVScreen';
@@ -11,10 +12,13 @@ import { EstoqueScreen } from '@/components/Estoque/EstoqueScreen';
 import { ClientesScreen } from '@/components/Clientes/ClientesScreen';
 import { RelatoriosScreen } from '@/components/Relatorios/RelatoriosScreen';
 import { FinanceiroScreen } from '@/components/Financeiro/FinanceiroScreen';
+import { UsuariosScreen } from '@/components/Usuarios/UsuariosScreen';
 import { LoginScreen } from '@/components/Auth/LoginScreen';
 import { RegisterScreen } from '@/components/Auth/RegisterScreen';
 import { AdminLoginScreen } from '@/components/Admin/AdminLoginScreen';
 import { AdminDashboard } from '@/components/Admin/AdminDashboard';
+import { podeVerTela } from '@/utils/permissoes';
+import type { TelaComPermissao } from '@/types';
 
 function TelaCarregando() {
   return (
@@ -24,11 +28,15 @@ function TelaCarregando() {
   );
 }
 
-/** Rotas da loja (tenant) — sessão resolvida via TenantContext. */
-function RotaProtegida({ children }: { children: ReactNode }) {
-  const { autenticado, carregando } = useTenant();
+/** Rotas da loja (tenant) — sessão resolvida via TenantContext. Se `tela` for
+ * informado, também exige que o usuário logado tenha permissão pra ela
+ * (ADMIN sempre tem; usuários sem permissoes.length também têm, pra não
+ * bloquear contas de antes desse recurso existir). */
+function RotaProtegida({ children, tela }: { children: ReactNode; tela?: TelaComPermissao }) {
+  const { autenticado, carregando, usuarioAtual } = useTenant();
   if (carregando) return <TelaCarregando />;
   if (!autenticado) return <Navigate to="/login" replace />;
+  if (tela && !podeVerTela(usuarioAtual, tela)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -77,7 +85,7 @@ function Roteador() {
       <Route
         path="/"
         element={
-          <RotaProtegida>
+          <RotaProtegida tela="dashboard">
             <DashboardScreen />
           </RotaProtegida>
         }
@@ -85,7 +93,7 @@ function Roteador() {
       <Route
         path="/pdv"
         element={
-          <RotaProtegida>
+          <RotaProtegida tela="pdv">
             <PDVScreen />
           </RotaProtegida>
         }
@@ -93,7 +101,7 @@ function Roteador() {
       <Route
         path="/estoque"
         element={
-          <RotaProtegida>
+          <RotaProtegida tela="estoque">
             <EstoqueScreen />
           </RotaProtegida>
         }
@@ -101,7 +109,7 @@ function Roteador() {
       <Route
         path="/financeiro"
         element={
-          <RotaProtegida>
+          <RotaProtegida tela="financeiro">
             <FinanceiroScreen />
           </RotaProtegida>
         }
@@ -109,7 +117,7 @@ function Roteador() {
       <Route
         path="/clientes"
         element={
-          <RotaProtegida>
+          <RotaProtegida tela="clientes">
             <ClientesScreen />
           </RotaProtegida>
         }
@@ -117,8 +125,16 @@ function Roteador() {
       <Route
         path="/relatorios"
         element={
-          <RotaProtegida>
+          <RotaProtegida tela="relatorios">
             <RelatoriosScreen />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/usuarios"
+        element={
+          <RotaProtegida>
+            <UsuariosScreen />
           </RotaProtegida>
         }
       />
@@ -149,16 +165,18 @@ function Roteador() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <ConfirmProvider>
-        <TenantProvider>
-          <AdminAuthProvider>
-            <BrowserRouter>
-              <Roteador />
-            </BrowserRouter>
-          </AdminAuthProvider>
-        </TenantProvider>
-      </ConfirmProvider>
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <ConfirmProvider>
+          <TenantProvider>
+            <AdminAuthProvider>
+              <BrowserRouter>
+                <Roteador />
+              </BrowserRouter>
+            </AdminAuthProvider>
+          </TenantProvider>
+        </ConfirmProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

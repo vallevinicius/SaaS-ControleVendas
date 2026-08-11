@@ -75,6 +75,33 @@ export async function adminSetPlano(tenantId: string, planoAtual: PlanoSaaS): Pr
   });
 }
 
+export interface NovaLojaPayload {
+  nomeFantasia: string;
+  razaoSocial?: string;
+  cnpj: string;
+  telefone?: string;
+  email?: string;
+  planoAtual: PlanoSaaS;
+  nomeAdmin: string;
+  emailAdmin: string;
+  senhaAdmin: string;
+}
+
+export async function adminCreateTenant(payload: NovaLojaPayload): Promise<void> {
+  await requisitar('/admin/tenants', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function adminSetTenantAtivo(tenantId: string, ativo: boolean): Promise<void> {
+  await requisitar(`/admin/tenants/${tenantId}/ativo`, {
+    method: 'PUT',
+    body: JSON.stringify({ ativo }),
+  });
+}
+
+export async function adminDeleteTenant(tenantId: string): Promise<void> {
+  await requisitar(`/admin/tenants/${tenantId}`, { method: 'DELETE' });
+}
+
 export async function adminSetUsuarioAtivo(usuarioId: string, ativo: boolean): Promise<void> {
   await requisitar(`/admin/usuarios/${usuarioId}/ativo`, {
     method: 'PUT',

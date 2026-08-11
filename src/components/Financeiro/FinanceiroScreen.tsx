@@ -108,7 +108,7 @@ export function FinanceiroScreen() {
             className="mt-1 rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
           />
         </label>
-        <button onClick={carregar} className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+        <button onClick={carregar} className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90">
           Filtrar
         </button>
         <button
@@ -193,7 +193,7 @@ export function FinanceiroScreen() {
             <button
               type="submit"
               disabled={enviando}
-              className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {enviando ? 'Salvando…' : 'Salvar lançamento'}
             </button>

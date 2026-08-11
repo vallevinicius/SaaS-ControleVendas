@@ -87,7 +87,7 @@ export function EstoqueScreen() {
       <div className="mb-4 flex justify-end">
         <button
           onClick={() => setMostrarNovoProduto(true)}
-          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
         >
           + Novo produto
         </button>
@@ -106,7 +106,7 @@ export function EstoqueScreen() {
               <tr>
                 <th className="px-5 py-3 font-medium">Produto</th>
                 <th className="px-5 py-3 font-medium">Categoria</th>
-                <th className="px-5 py-3 font-medium">SKU</th>
+                <th className="px-5 py-3 font-medium">Quantidade</th>
                 <th className="px-5 py-3 font-medium text-right">Custo</th>
                 <th className="px-5 py-3 font-medium text-right">Venda</th>
                 <th className="px-5 py-3 font-medium text-right">Em estoque</th>

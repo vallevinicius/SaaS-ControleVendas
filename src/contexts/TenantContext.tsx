@@ -15,6 +15,10 @@ import {
  * Fonte única de verdade para "quem está logado agora" em toda a aplicação:
  * tenant (loja) + usuário, resolvidos a partir do JWT guardado em
  * localStorage. Nenhuma tela deve buscar esses dados de outro lugar.
+ *
+ * A cor de acento do app (--tenant-primary) NÃO vem mais daqui — é
+ * monocromática e definida por tema (claro/escuro) em src/index.css,
+ * controlada pelo ThemeContext.
  * ----------------------------------------------------------------------------
  */
 
@@ -30,34 +34,6 @@ interface TenantContextValue {
 }
 
 const TenantContext = createContext<TenantContextValue | undefined>(undefined);
-
-/** Aplica a cor do tenant como variáveis CSS globais (--tenant-primary etc). */
-function aplicarVariaveisDeTema(tenant: Tenant | null) {
-  const root = document.documentElement;
-  if (!tenant) return;
-
-  const cor = tenant.configuracoes.corPrincipalDoTema;
-  root.style.setProperty('--tenant-primary', cor);
-  root.style.setProperty('--tenant-primary-hover', tenant.configuracoes.corPrincipalHover ?? escurecerHex(cor, 0.15));
-  root.style.setProperty('--tenant-primary-soft', hexParaRgba(cor, 0.14));
-}
-
-function escurecerHex(hex: string, fator: number): string {
-  const { r, g, b } = hexParaRgb(hex);
-  const escurecer = (canal: number) => Math.max(0, Math.round(canal * (1 - fator)));
-  return `#${[escurecer(r), escurecer(g), escurecer(b)].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
-}
-
-function hexParaRgb(hex: string): { r: number; g: number; b: number } {
-  const limpo = hex.replace('#', '');
-  const bigint = parseInt(limpo, 16);
-  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
-}
-
-function hexParaRgba(hex: string, alpha: number): string {
-  const { r, g, b } = hexParaRgb(hex);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -77,7 +53,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       const { usuario, tenant: tenantCarregado } = await getMe();
       setUsuarioAtual(usuario);
       setTenant(tenantCarregado);
-      aplicarVariaveisDeTema(tenantCarregado);
     } catch {
       // Token ausente/expirado/inválido — volta ao estado deslogado.
       apiLogout();

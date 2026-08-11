@@ -1,4 +1,5 @@
 import { useTenant } from '@/contexts/TenantContext';
+import { ThemeToggle } from '@/components/Common/ThemeToggle';
 
 interface HeaderProps {
   titulo: string;
@@ -16,8 +17,10 @@ export function Header({ titulo, subtitulo }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        <ThemeToggle />
+
         <div className="flex items-center gap-2.5 rounded-full bg-ink-700 py-1.5 pl-1.5 pr-3.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-tenant text-xs font-semibold text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-tenant text-xs font-semibold text-tenant-foreground">
             {usuarioAtual?.nome.charAt(0) ?? '?'}
           </div>
           <div className="text-xs">

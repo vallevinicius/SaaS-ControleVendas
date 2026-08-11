@@ -65,7 +65,7 @@ export function LoginScreen() {
         <button
           type="submit"
           disabled={enviando}
-          className="w-full rounded-lg bg-tenant py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full rounded-lg bg-tenant py-2.5 text-sm font-semibold text-tenant-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {enviando ? 'Entrando…' : 'Entrar'}
         </button>

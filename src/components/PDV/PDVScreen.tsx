@@ -9,6 +9,7 @@ import type { Cliente, FormaPagamento, Produto } from '@/types';
 interface ItemCarrinho {
   produto: Produto;
   quantidade: number;
+  precoUnitario: number;
 }
 
 const formasPagamento: Array<{ valor: FormaPagamento; rotulo: string }> = [
@@ -18,13 +19,21 @@ const formasPagamento: Array<{ valor: FormaPagamento; rotulo: string }> = [
   { valor: 'DINHEIRO', rotulo: 'Dinheiro' },
 ];
 
+const TAXA_CARTAO_CREDITO = 0.05;
+const PARCELAS_DISPONIVEIS = [1, 2, 3];
+
+// Classe utilitária pra tirar as setinhas nativas do <input type="number">
+// em todos os navegadores — é isso que deixava o campo de desconto feio.
+const SEM_SPINNER_NATIVO =
+  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+
 /**
  * Tela de Frente de Caixa (PDV):
  * - Busca produto por nome/SKU
- * - Adiciona quantidade ao carrinho
- * - Mostra total em tempo real
+ * - Adiciona quantidade ao carrinho, com preço ajustável por item
+ * - Desconto em % sobre o subtotal
+ * - Cartão de crédito soma 5% de taxa e permite parcelar em até 3x
  * - Permite vincular um cliente (opcional)
- * - Fecha a venda com forma de pagamento e desconto
  *
  * A tela NÃO manipula nenhum array de dados global: toda leitura/escrita
  * passa pelo apiService, autenticado via JWT do tenant/usuário logados.
@@ -36,7 +45,8 @@ export function PDVScreen() {
   const [resultados, setResultados] = useState<Produto[]>([]);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('PIX');
-  const [desconto, setDesconto] = useState<number>(0);
+  const [descontoPercentual, setDescontoPercentual] = useState<number>(0);
+  const [parcelas, setParcelas] = useState<number>(1);
   const [processando, setProcessando] = useState(false);
 
   const [termoCliente, setTermoCliente] = useState('');
@@ -79,7 +89,7 @@ export function PDVScreen() {
       if (existente) {
         return atual.map((i) => (i.produto.id === produto.id ? { ...i, quantidade: i.quantidade + 1 } : i));
       }
-      return [...atual, { produto, quantidade: 1 }];
+      return [...atual, { produto, quantidade: 1, precoUnitario: produto.precoVenda }];
     });
     setTermoBusca('');
     setResultados([]);
@@ -93,26 +103,49 @@ export function PDVScreen() {
     setCarrinho((atual) => atual.map((i) => (i.produto.id === productId ? { ...i, quantidade } : i)));
   }
 
-  const totalBruto = useMemo(
-    () => carrinho.reduce((acc, i) => acc + i.produto.precoVenda * i.quantidade, 0),
+  function alterarPrecoItem(productId: string, precoUnitario: number) {
+    setCarrinho((atual) => atual.map((i) => (i.produto.id === productId ? { ...i, precoUnitario: Math.max(0, precoUnitario) } : i)));
+  }
+
+  function removerDoCarrinho(productId: string) {
+    setCarrinho((atual) => atual.filter((i) => i.produto.id !== productId));
+  }
+
+  function handleMudarFormaPagamento(forma: FormaPagamento) {
+    setFormaPagamento(forma);
+    if (forma !== 'CARTAO_CREDITO') setParcelas(1);
+  }
+
+  const subtotal = useMemo(
+    () => carrinho.reduce((acc, i) => acc + i.precoUnitario * i.quantidade, 0),
     [carrinho],
   );
-  const totalLiquido = Math.max(0, totalBruto - desconto);
+  const valorDesconto = Number(((subtotal * descontoPercentual) / 100).toFixed(2));
+  const subtotalComDesconto = Math.max(0, subtotal - valorDesconto);
+  const ehCartaoCredito = formaPagamento === 'CARTAO_CREDITO';
+  const valorTaxaCartao = ehCartaoCredito ? Number((subtotalComDesconto * TAXA_CARTAO_CREDITO).toFixed(2)) : 0;
+  const totalFinal = subtotalComDesconto + valorTaxaCartao;
 
   async function finalizarVenda() {
     if (carrinho.length === 0) return;
     setProcessando(true);
     try {
       await registerSale({
-        itens: carrinho.map((i) => ({ productId: i.produto.id, quantidade: i.quantidade })),
-        desconto,
-        taxas: 0,
+        itens: carrinho.map((i) => ({
+          productId: i.produto.id,
+          quantidade: i.quantidade,
+          precoUnitario: i.precoUnitario,
+        })),
+        desconto: valorDesconto,
+        taxas: valorTaxaCartao,
+        parcelas: ehCartaoCredito ? parcelas : 1,
         formaPagamento,
         clienteId: clienteSelecionado?.id,
       });
       toast.sucesso(`Venda finalizada às ${new Date().toLocaleTimeString('pt-BR')}.`);
       setCarrinho([]);
-      setDesconto(0);
+      setDescontoPercentual(0);
+      setParcelas(1);
       setClienteSelecionado(null);
       setTermoCliente('');
     } catch (erro) {
@@ -169,7 +202,22 @@ export function PDVScreen() {
                   <li key={item.produto.id} className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-ink-100">{item.produto.nome}</p>
-                      <p className="text-xs text-ink-400">{formatarMoeda(item.produto.precoVenda, tenant)} / un.</p>
+                      <div className="mt-1 flex items-center gap-1 text-xs text-ink-400">
+                        <span>R$</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={item.precoUnitario}
+                          onChange={(e) => alterarPrecoItem(item.produto.id, Number(e.target.value) || 0)}
+                          aria-label={`Preço unitário de ${item.produto.nome}`}
+                          className={[
+                            'w-16 rounded-md border border-ink-600 bg-ink-700 px-1.5 py-0.5 font-mono text-ink-100 focus:border-tenant focus:outline-none',
+                            SEM_SPINNER_NATIVO,
+                          ].join(' ')}
+                        />
+                        <span>/ un.</span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -190,8 +238,16 @@ export function PDVScreen() {
                       </button>
                     </div>
                     <span className="w-24 text-right font-mono text-sm text-ink-100">
-                      {formatarMoeda(item.produto.precoVenda * item.quantidade, tenant)}
+                      {formatarMoeda(item.precoUnitario * item.quantidade, tenant)}
                     </span>
+                    <button
+                      onClick={() => removerDoCarrinho(item.produto.id)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-ink-500 hover:bg-red-500/10 hover:text-red-400"
+                      aria-label={`Remover ${item.produto.nome} do carrinho`}
+                      title="Remover do carrinho"
+                    >
+                      ×
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -249,27 +305,67 @@ export function PDVScreen() {
           <div className="space-y-3 text-sm">
             <div className="flex justify-between text-ink-300">
               <span>Subtotal</span>
-              <span className="font-mono">{formatarMoeda(totalBruto, tenant)}</span>
+              <span className="font-mono">{formatarMoeda(subtotal, tenant)}</span>
             </div>
-            <label className="flex items-center justify-between text-ink-300">
+
+            <div className="flex items-center justify-between text-ink-300">
               <span>Desconto</span>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                value={desconto}
-                onChange={(e) => setDesconto(Number(e.target.value) || 0)}
-                className="w-24 rounded-md border border-ink-600 bg-ink-700 px-2 py-1 text-right font-mono text-ink-100 focus:border-tenant focus:outline-none"
-              />
-            </label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setDescontoPercentual((p) => Math.max(0, p - 1))}
+                  className="h-7 w-7 rounded-md bg-ink-700 text-ink-100 hover:bg-ink-600"
+                  aria-label="Diminuir desconto"
+                >
+                  −
+                </button>
+                <div className="flex items-center gap-0.5 rounded-md border border-ink-600 bg-ink-700 px-2 py-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={descontoPercentual}
+                    onChange={(e) => setDescontoPercentual(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+                    aria-label="Percentual de desconto"
+                    className={['w-9 bg-transparent text-right font-mono text-ink-100 outline-none', SEM_SPINNER_NATIVO].join(' ')}
+                  />
+                  <span className="text-ink-400">%</span>
+                </div>
+                <button
+                  onClick={() => setDescontoPercentual((p) => Math.min(100, p + 1))}
+                  className="h-7 w-7 rounded-md bg-ink-700 text-ink-100 hover:bg-ink-600"
+                  aria-label="Aumentar desconto"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {valorDesconto > 0 && (
+              <div className="flex justify-between text-ink-400">
+                <span>Desconto aplicado</span>
+                <span className="font-mono">−{formatarMoeda(valorDesconto, tenant)}</span>
+              </div>
+            )}
+
+            {ehCartaoCredito && valorTaxaCartao > 0 && (
+              <div className="flex justify-between text-ink-400">
+                <span>Taxa do cartão (5%)</span>
+                <span className="font-mono">+{formatarMoeda(valorTaxaCartao, tenant)}</span>
+              </div>
+            )}
           </div>
 
           <div className="my-5 border-t border-ink-700" />
 
           <div className="flex items-baseline justify-between">
             <span className="text-sm text-ink-300">Total</span>
-            <span className="font-display text-3xl font-semibold text-tenant">{formatarMoeda(totalLiquido, tenant)}</span>
+            <span className="font-display text-3xl font-semibold text-tenant">{formatarMoeda(totalFinal, tenant)}</span>
           </div>
+          {ehCartaoCredito && parcelas > 1 && (
+            <p className="mt-1 text-right text-xs text-ink-400">
+              {parcelas}x de {formatarMoeda(totalFinal / parcelas, tenant)}
+            </p>
+          )}
 
           <div className="mt-6">
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-400">Forma de pagamento</p>
@@ -277,7 +373,7 @@ export function PDVScreen() {
               {formasPagamento.map((forma) => (
                 <button
                   key={forma.valor}
-                  onClick={() => setFormaPagamento(forma.valor)}
+                  onClick={() => handleMudarFormaPagamento(forma.valor)}
                   className={[
                     'rounded-lg border px-3 py-2 text-xs font-medium transition-colors',
                     formaPagamento === forma.valor
@@ -291,6 +387,28 @@ export function PDVScreen() {
             </div>
           </div>
 
+          {ehCartaoCredito && (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-400">Parcelas</p>
+              <div className="grid grid-cols-3 gap-2">
+                {PARCELAS_DISPONIVEIS.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setParcelas(n)}
+                    className={[
+                      'rounded-lg border px-2 py-2 text-xs font-medium transition-colors',
+                      parcelas === n
+                        ? 'border-tenant bg-tenant-soft text-tenant'
+                        : 'border-ink-600 text-ink-300 hover:border-ink-500',
+                    ].join(' ')}
+                  >
+                    {n}x
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <button
             onClick={finalizarVenda}
             disabled={carrinho.length === 0 || processando}
@@ -298,7 +416,7 @@ export function PDVScreen() {
           >
             <span
               className={[
-                'block w-full rounded-xl bg-tenant py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90',
+                'block w-full rounded-xl bg-tenant py-3.5 text-sm font-semibold text-tenant-foreground transition-opacity hover:opacity-90',
                 (carrinho.length === 0 || processando) && 'cursor-not-allowed opacity-40',
               ]
                 .filter(Boolean)

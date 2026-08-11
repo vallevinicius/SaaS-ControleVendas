@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
+import { mascararCnpj, mascararTelefone } from '@/utils/mascaras';
 import { AuthLayout } from './AuthLayout';
 
 export function RegisterScreen() {
@@ -10,6 +11,7 @@ export function RegisterScreen() {
   const navigate = useNavigate();
   const [nomeFantasia, setNomeFantasia] = useState('');
   const [cnpj, setCnpj] = useState('');
+  const [telefone, setTelefone] = useState('');
   const [nomeAdmin, setNomeAdmin] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
@@ -19,7 +21,7 @@ export function RegisterScreen() {
     e.preventDefault();
     setEnviando(true);
     try {
-      await registrar({ nomeFantasia, cnpj, nomeAdmin, email, senha });
+      await registrar({ nomeFantasia, cnpj, telefone: telefone || undefined, nomeAdmin, email, senha });
       toast.sucesso('Loja criada com sucesso.');
       navigate('/', { replace: true });
     } catch (erro) {
@@ -58,9 +60,23 @@ export function RegisterScreen() {
           CNPJ
           <input
             required
+            inputMode="numeric"
             value={cnpj}
-            onChange={(e) => setCnpj(e.target.value)}
+            onChange={(e) => setCnpj(mascararCnpj(e.target.value))}
             placeholder="00.000.000/0001-00"
+            maxLength={18}
+            className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
+          />
+        </label>
+
+        <label className="block text-sm text-ink-300">
+          Telefone da loja
+          <input
+            inputMode="numeric"
+            value={telefone}
+            onChange={(e) => setTelefone(mascararTelefone(e.target.value))}
+            placeholder="(00) 00000-0000"
+            maxLength={15}
             className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
           />
         </label>
@@ -101,7 +117,7 @@ export function RegisterScreen() {
         <button
           type="submit"
           disabled={enviando}
-          className="w-full rounded-lg bg-tenant py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full rounded-lg bg-tenant py-2.5 text-sm font-semibold text-tenant-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {enviando ? 'Criando loja…' : 'Criar loja'}
         </button>

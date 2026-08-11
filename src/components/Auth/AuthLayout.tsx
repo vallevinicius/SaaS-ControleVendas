@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ThemeToggle } from '@/components/Common/ThemeToggle';
 
 interface AuthLayoutProps {
   titulo: string;
@@ -9,10 +10,14 @@ interface AuthLayoutProps {
 
 export function AuthLayout({ titulo, subtitulo, children, rodape }: AuthLayoutProps) {
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-ink-900 px-4">
+    <div className="relative flex h-screen w-screen items-center justify-center bg-ink-900 px-4">
+      <div className="absolute right-5 top-5">
+        <ThemeToggle />
+      </div>
+
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-1 text-center">
-          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-tenant text-lg font-bold text-white">
+          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-tenant text-lg font-bold text-tenant-foreground">
             TC
           </div>
           <p className="font-display text-lg font-semibold tracking-tight text-ink-100">Total Control</p>

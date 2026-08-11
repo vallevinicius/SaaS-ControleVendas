@@ -4,22 +4,28 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Cor de destaque controlada dinamicamente via variável CSS
-        // injetada pelo TenantContext (--tenant-primary). Nunca hardcode
-        // uma cor de marca fixa: cada tenant define a sua.
+        // Cor de destaque (azul), definida só em src/index.css como "R G B"
+        // — o formato rgb(var(...) / <alpha-value>) é o que permite classes
+        // com opacidade (ex: bg-tenant/60) funcionarem corretamente.
         tenant: {
-          DEFAULT: 'var(--tenant-primary)',
-          hover: 'var(--tenant-primary-hover)',
-          soft: 'var(--tenant-primary-soft)',
+          DEFAULT: 'rgb(var(--tenant-primary) / <alpha-value>)',
+          hover: 'rgb(var(--tenant-primary-hover) / <alpha-value>)',
+          soft: 'rgb(var(--tenant-primary-soft) / 0.12)',
+          foreground: 'rgb(var(--tenant-primary-foreground) / <alpha-value>)',
         },
+        // Escala neutra também vinda de CSS vars, pra virar clara/escura
+        // sozinha conforme o atributo data-theme em <html> — nenhum
+        // componente precisa saber qual tema está ativo.
         ink: {
-          900: '#12141C',
-          800: '#1B1E29',
-          700: '#262A38',
-          600: '#3A3F52',
-          400: '#6B7186',
-          200: '#C7CAD6',
-          100: '#EDEEF2',
+          900: 'rgb(var(--ink-900) / <alpha-value>)',
+          800: 'rgb(var(--ink-800) / <alpha-value>)',
+          700: 'rgb(var(--ink-700) / <alpha-value>)',
+          600: 'rgb(var(--ink-600) / <alpha-value>)',
+          500: 'rgb(var(--ink-500) / <alpha-value>)',
+          400: 'rgb(var(--ink-400) / <alpha-value>)',
+          300: 'rgb(var(--ink-300) / <alpha-value>)',
+          200: 'rgb(var(--ink-200) / <alpha-value>)',
+          100: 'rgb(var(--ink-100) / <alpha-value>)',
         },
       },
       fontFamily: {

@@ -1,17 +1,27 @@
 import { NavLink } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
+import { TELAS_COM_PERMISSAO, podeVerTela } from '@/utils/permissoes';
 
-const itensDeNavegacao = [
-  { rota: '/', rotulo: 'Dashboard', icone: '◧' },
-  { rota: '/pdv', rotulo: 'Frente de Caixa', icone: '⛁' },
-  { rota: '/estoque', rotulo: 'Estoque', icone: '▤' },
-  { rota: '/financeiro', rotulo: 'Financeiro', icone: '◈' },
-  { rota: '/clientes', rotulo: 'Clientes', icone: '◍' },
-  { rota: '/relatorios', rotulo: 'Relatórios', icone: '▥' },
-];
+const icones: Record<string, string> = {
+  dashboard: '◧',
+  pdv: '⛁',
+  estoque: '▤',
+  financeiro: '◈',
+  clientes: '◍',
+  relatorios: '▥',
+};
+
+const itemUsuarios = { rota: '/usuarios', rotulo: 'Usuários', icone: '◑' };
 
 export function Sidebar() {
-  const { tenant } = useTenant();
+  const { tenant, usuarioAtual } = useTenant();
+
+  const itens = TELAS_COM_PERMISSAO.filter((tela) => podeVerTela(usuarioAtual, tela.chave)).map((tela) => ({
+    rota: tela.rota,
+    rotulo: tela.rotulo,
+    icone: icones[tela.chave],
+  }));
+  if (usuarioAtual?.papel === 'ADMIN') itens.push(itemUsuarios);
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-ink-700 bg-ink-800">
@@ -38,7 +48,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {itensDeNavegacao.map((item) => (
+        {itens.map((item) => (
           <NavLink
             key={item.rota}
             to={item.rota}

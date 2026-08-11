@@ -9,6 +9,8 @@ export const authRouter = Router();
 const registerSchema = z.object({
   nomeFantasia: z.string().min(2),
   cnpj: z.string().min(1),
+  telefone: z.string().optional(),
+  emailContato: z.string().email().optional().or(z.literal('')),
   nomeAdmin: z.string().min(2),
   email: z.string().email(),
   senha: z.string().min(6),
@@ -19,7 +21,7 @@ authRouter.post('/register', async (req, res) => {
   if (!parse.success) {
     return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
   }
-  const { nomeFantasia, cnpj, nomeAdmin, email, senha } = parse.data;
+  const { nomeFantasia, cnpj, telefone, emailContato, nomeAdmin, email, senha } = parse.data;
 
   const emailExistente = await prisma.usuario.findUnique({ where: { email } });
   if (emailExistente) {
@@ -37,6 +39,8 @@ authRouter.post('/register', async (req, res) => {
       data: {
         nomeFantasia,
         cnpj,
+        telefone: telefone || undefined,
+        email: emailContato || undefined,
         planoAtual: 'FREE',
         logoDaLojaUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nomeFantasia)}&backgroundType=gradientLinear`,
         corPrincipalDoTema: '#2563EB',
@@ -49,6 +53,7 @@ authRouter.post('/register', async (req, res) => {
         email,
         senhaHash,
         papel: 'ADMIN',
+        raiz: true,
       },
     });
     await tx.categoria.create({ data: { tenantId: tenant.id, nome: 'Geral' } });
@@ -71,9 +76,12 @@ authRouter.post('/login', async (req, res) => {
   }
   const { email, senha } = parse.data;
 
-  const usuario = await prisma.usuario.findUnique({ where: { email } });
+  const usuario = await prisma.usuario.findUnique({ where: { email }, include: { tenant: true } });
   if (!usuario || !usuario.ativo) {
     return res.status(401).json({ erro: 'E-mail ou senha inválidos.' });
+  }
+  if (!usuario.tenant.ativo) {
+    return res.status(403).json({ erro: 'Esta loja está suspensa. Fale com o suporte.' });
   }
 
   const senhaConfere = await bcrypt.compare(senha, usuario.senhaHash);
@@ -87,10 +95,11 @@ authRouter.post('/login', async (req, res) => {
 
 authRouter.get('/me', requireAuth, async (req, res) => {
   const usuario = await prisma.usuario.findUnique({ where: { id: req.usuario!.id } });
-  if (!usuario) return res.status(404).json({ erro: 'Usuário não encontrado.' });
+  if (!usuario || !usuario.ativo) return res.status(404).json({ erro: 'Usuário não encontrado.' });
 
   const tenant = await prisma.tenant.findUnique({ where: { id: usuario.tenantId } });
   if (!tenant) return res.status(404).json({ erro: 'Loja não encontrada.' });
+  if (!tenant.ativo) return res.status(403).json({ erro: 'Esta loja está suspensa. Fale com o suporte.' });
 
   res.json({
     usuario: {
@@ -99,6 +108,8 @@ authRouter.get('/me', requireAuth, async (req, res) => {
       nome: usuario.nome,
       email: usuario.email,
       papel: usuario.papel,
+      permissoes: (usuario.permissoes as string[] | null) ?? undefined,
+      raiz: usuario.raiz,
       ativo: usuario.ativo,
     },
     tenant: {
@@ -106,6 +117,8 @@ authRouter.get('/me', requireAuth, async (req, res) => {
       nomeFantasia: tenant.nomeFantasia,
       razaoSocial: tenant.razaoSocial ?? undefined,
       cnpj: tenant.cnpj,
+      telefone: tenant.telefone ?? undefined,
+      email: tenant.email ?? undefined,
       planoAtual: tenant.planoAtual,
       configuracoes: {
         logoDaLojaUrl: tenant.logoDaLojaUrl,

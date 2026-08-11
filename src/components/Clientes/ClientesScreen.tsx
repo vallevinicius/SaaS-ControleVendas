@@ -52,7 +52,7 @@ export function ClientesScreen() {
       <div className="mb-4 flex justify-end">
         <button
           onClick={() => setMostrarFormulario((atual) => !atual)}
-          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
         >
           {mostrarFormulario ? 'Cancelar' : '+ Novo cliente'}
         </button>
@@ -103,7 +103,7 @@ export function ClientesScreen() {
             <button
               type="submit"
               disabled={enviando}
-              className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {enviando ? 'Salvando…' : 'Salvar cliente'}
             </button>

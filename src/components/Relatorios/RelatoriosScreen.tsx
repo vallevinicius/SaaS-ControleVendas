@@ -56,7 +56,7 @@ export function RelatoriosScreen() {
         </label>
         <button
           onClick={carregar}
-          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
         >
           Filtrar
         </button>

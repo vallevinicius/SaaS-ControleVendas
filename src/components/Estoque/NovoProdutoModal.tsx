@@ -80,7 +80,7 @@ export function NovoProdutoModal({ categorias, aoFechar, aoConfirmar, aoCriarCat
           </label>
 
           <label className="block text-sm text-ink-300">
-            SKU
+            Quantidade em estoque (SKU)
             <input
               value={sku}
               onChange={(e) => setSku(e.target.value)}
@@ -175,7 +175,7 @@ export function NovoProdutoModal({ categorias, aoFechar, aoConfirmar, aoCriarCat
           <button
             onClick={handleConfirmar}
             disabled={enviando}
-            className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {enviando ? 'Cadastrando…' : 'Cadastrar produto'}
           </button>

@@ -44,6 +44,9 @@ model Tenant {
   nomeFantasia            String
   razaoSocial             String?
   cnpj                    String    @unique
+  /// Meios de contato da empresa (não é o e-mail de login de nenhum usuário).
+  telefone                String?
+  email                   String?
   planoAtual              PlanoSaaS @default(FREE)
   logoDaLojaUrl           String    @db.Text
   corPrincipalDoTema      String
@@ -51,6 +54,9 @@ model Tenant {
   fusoHorario             String    @default("America/Sao_Paulo")
   moeda                   String    @default("BRL")
   exigirSenhaAoAbrirCaixa Boolean   @default(false)
+  /// Loja suspensa pela Total Software (ex: inadimplência, abuso) — ninguém
+  /// da loja consegue logar enquanto estiver false.
+  ativo                   Boolean   @default(true)
   criadoEm                DateTime  @default(now())
 
   usuarios              Usuario[]
@@ -68,6 +74,14 @@ model Usuario {
   email     String       @unique
   senhaHash String
   papel     PapelUsuario @default(OPERADOR_CAIXA)
+  /// Telas que este usuário pode acessar (ex: ["dashboard","pdv"]).
+  /// Ignorado para papel ADMIN, que sempre tem acesso total. `null` (contas
+  /// antigas, antes desse campo existir) também é tratado como acesso total.
+  permissoes Json?
+  /// Conta principal da loja, criada junto com o tenant no cadastro. Não
+  /// pode ser desativada por ninguém — nem por outro Admin — pra loja nunca
+  /// ficar sem um login que funcione.
+  raiz      Boolean      @default(false)
   ativo     Boolean      @default(true)
   criadoEm  DateTime     @default(now())
 
@@ -137,6 +151,8 @@ model Transacao {
   desconto       Decimal           @default(0) @db.Decimal(12, 2)
   taxas          Decimal           @default(0) @db.Decimal(12, 2)
   formaPagamento FormaPagamento?
+  /// Número de parcelas (só relevante para CARTAO_CREDITO).
+  parcelas       Int               @default(1)
   usuarioId      String
   clienteId      String?
   observacao     String?
