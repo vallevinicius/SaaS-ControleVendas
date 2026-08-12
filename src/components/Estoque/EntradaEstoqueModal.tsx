@@ -34,7 +34,7 @@ export function EntradaEstoqueModal({ produto, aoFechar, aoConfirmar }: EntradaE
             <input
               type="number"
               min={1}
-              value={quantidade}
+              value={quantidade === 0 ? '' : quantidade}
               onChange={(e) => setQuantidade(Number(e.target.value) || 0)}
               className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
             />
@@ -46,7 +46,7 @@ export function EntradaEstoqueModal({ produto, aoFechar, aoConfirmar }: EntradaE
               type="number"
               min={0}
               step={0.01}
-              value={precoCusto}
+              value={precoCusto === 0 ? '' : precoCusto}
               onChange={(e) => setPrecoCusto(Number(e.target.value) || 0)}
               className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
             />

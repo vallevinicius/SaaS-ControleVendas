@@ -119,12 +119,49 @@ export function RelatoriosScreen() {
             </div>
           </div>
 
+          <div className="rounded-xl border border-ink-700 bg-ink-800 p-6">
+            <p className="mb-4 font-display text-base font-semibold text-ink-100">Vendas por vendedor</p>
+            {relatorio.vendasPorVendedor.length === 0 ? (
+              <p className="text-sm text-ink-400">Nenhuma venda com vendedor identificado no período.</p>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-ink-700">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-ink-900/40 text-xs uppercase tracking-wide text-ink-400">
+                    <tr>
+                      <th className="px-5 py-3 font-medium">Vendedor</th>
+                      <th className="px-5 py-3 font-medium text-right">Vendas</th>
+                      <th className="px-5 py-3 font-medium text-right">Total vendido</th>
+                      <th className="px-5 py-3 font-medium text-right">Comissão</th>
+                      <th className="px-5 py-3 font-medium text-right">A pagar</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ink-700">
+                    {relatorio.vendasPorVendedor.map((v) => (
+                      <tr key={v.vendedorId} className="transition-colors hover:bg-ink-700/40">
+                        <td className="px-5 py-3.5 font-medium text-ink-100">{v.nome}</td>
+                        <td className="px-5 py-3.5 text-right text-ink-300">{v.quantidadeVendas}</td>
+                        <td className="px-5 py-3.5 text-right font-mono text-ink-100">
+                          {formatarMoeda(v.totalVendido, tenant)}
+                        </td>
+                        <td className="px-5 py-3.5 text-right text-ink-300">{v.comissaoPercentual}%</td>
+                        <td className="px-5 py-3.5 text-right font-mono text-tenant">
+                          {formatarMoeda(v.comissaoAPagar, tenant)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           <div className="overflow-hidden rounded-xl border border-ink-700">
             <table className="w-full text-left text-sm">
               <thead className="bg-ink-800 text-xs uppercase tracking-wide text-ink-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Data</th>
                   <th className="px-5 py-3 font-medium">Cliente</th>
+                  <th className="px-5 py-3 font-medium">Vendedor</th>
                   <th className="px-5 py-3 font-medium">Forma de pagamento</th>
                   <th className="px-5 py-3 font-medium text-right">Itens</th>
                   <th className="px-5 py-3 font-medium text-right">Total</th>
@@ -133,7 +170,7 @@ export function RelatoriosScreen() {
               <tbody className="divide-y divide-ink-700 bg-ink-800/40">
                 {relatorio.vendas.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-6 text-center text-ink-400">
+                    <td colSpan={6} className="px-5 py-6 text-center text-ink-400">
                       Nenhuma venda no período selecionado.
                     </td>
                   </tr>
@@ -142,6 +179,7 @@ export function RelatoriosScreen() {
                     <tr key={venda.id} className="transition-colors hover:bg-ink-800">
                       <td className="px-5 py-3.5 text-ink-300">{formatarDataHora(venda.timestamp, tenant)}</td>
                       <td className="px-5 py-3.5 text-ink-300">{venda.clienteNome ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{venda.vendedorNome ?? '—'}</td>
                       <td className="px-5 py-3.5 text-ink-300">{formatarFormaPagamento(venda.formaPagamento)}</td>
                       <td className="px-5 py-3.5 text-right text-ink-300">{venda.quantidadeItens}</td>
                       <td className="px-5 py-3.5 text-right font-mono text-ink-100">

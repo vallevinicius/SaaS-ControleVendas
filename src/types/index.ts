@@ -49,7 +49,14 @@ export interface Tenant {
 export type PapelUsuario = 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
 
 /** Chave de cada tela que pode ter acesso concedido/negado por usuário. */
-export type TelaComPermissao = 'dashboard' | 'pdv' | 'estoque' | 'financeiro' | 'clientes' | 'relatorios';
+export type TelaComPermissao =
+  | 'dashboard'
+  | 'pdv'
+  | 'estoque'
+  | 'financeiro'
+  | 'clientes'
+  | 'vendedores'
+  | 'relatorios';
 
 export interface Usuario {
   id: string;
@@ -136,7 +143,44 @@ export interface Transacao {
   parcelas: number;
   formaPagamento?: FormaPagamento; // aplicável a SAIDA (venda)
   usuarioId: string;
+  caixaId?: string;
+  vendedorId?: string;
   observacao?: string;
+}
+
+/** Quem fez a venda no PDV, pra apurar comissão — não precisa ter login. */
+export interface Vendedor {
+  id: string;
+  tenantId: string;
+  nome: string;
+  comissaoPercentual: number;
+  ativo: boolean;
+  criadoEm: string;
+}
+
+export type StatusCaixa = 'ABERTO' | 'FECHADO';
+
+/** Resumo das vendas feitas dentro de um turno de caixa. */
+export interface ResumoCaixa {
+  totalVendido: number;
+  quantidadeVendas: number;
+  totaisPorFormaPagamento?: Record<string, number>;
+}
+
+/** Turno de caixa — abre com um valor inicial, acumula vendas, fecha com
+ * a contagem final. Enquanto não houver um caixa ABERTO, o PDV não vende. */
+export interface Caixa {
+  id: string;
+  tenantId: string;
+  status: StatusCaixa;
+  valorAbertura: number;
+  abertoEm: string;
+  abertoPorNome?: string;
+  valorContadoFechamento?: number;
+  observacaoFechamento?: string;
+  fechadoEm?: string;
+  fechadoPorNome?: string;
+  resumo: ResumoCaixa;
 }
 
 /** Payload usado para registrar uma nova venda a partir do PDV. */
@@ -184,6 +228,18 @@ export interface ResumoDashboard {
   produtosComEstoqueBaixo: number;
 }
 
+/** Resumo de uma venda já finalizada, usado em Relatórios e na lista de
+ * vendas do turno de caixa aberto no PDV. */
+export interface VendaResumo {
+  id: string;
+  timestamp: string;
+  valorTotal: number;
+  formaPagamento?: FormaPagamento;
+  clienteNome?: string;
+  vendedorNome?: string;
+  quantidadeItens: number;
+}
+
 /** Estrutura agregada consumida pela tela de Relatórios. */
 export interface RelatorioVendas {
   faturamentoTotal: number;
@@ -196,14 +252,15 @@ export interface RelatorioVendas {
     quantidadeVendida: number;
     receitaGerada: number;
   }>;
-  vendas: Array<{
-    id: string;
-    timestamp: string;
-    valorTotal: number;
-    formaPagamento?: FormaPagamento;
-    clienteNome?: string;
-    quantidadeItens: number;
+  vendasPorVendedor: Array<{
+    vendedorId: string;
+    nome: string;
+    quantidadeVendas: number;
+    totalVendido: number;
+    comissaoPercentual: number;
+    comissaoAPagar: number;
   }>;
+  vendas: VendaResumo[];
 }
 
 export type TipoLancamentoFinanceiro = 'RECEITA' | 'DESPESA';

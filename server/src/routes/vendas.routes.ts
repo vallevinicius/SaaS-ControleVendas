@@ -18,6 +18,8 @@ function serializarTransacao(t: {
   formaPagamento: string | null;
   usuarioId: string;
   clienteId: string | null;
+  caixaId: string | null;
+  vendedorId: string | null;
   observacao: string | null;
   itens: Array<{
     productId: string;
@@ -46,6 +48,8 @@ function serializarTransacao(t: {
     formaPagamento: t.formaPagamento ?? undefined,
     usuarioId: t.usuarioId,
     clienteId: t.clienteId ?? undefined,
+    caixaId: t.caixaId ?? undefined,
+    vendedorId: t.vendedorId ?? undefined,
     observacao: t.observacao ?? undefined,
   };
 }
@@ -77,6 +81,7 @@ const novaVendaSchema = z.object({
   parcelas: z.number().int().min(1).max(3).optional(),
   formaPagamento: z.enum(['PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'BOLETO', 'OUTRO']),
   clienteId: z.string().optional(),
+  vendedorId: z.string().optional(),
 });
 
 vendasRouter.post('/', async (req, res) => {
@@ -85,7 +90,22 @@ vendasRouter.post('/', async (req, res) => {
   if (!parse.success) {
     return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
   }
-  const { itens, desconto = 0, taxas = 0, parcelas = 1, formaPagamento, clienteId } = parse.data;
+  const { itens, desconto = 0, taxas = 0, parcelas = 1, formaPagamento, clienteId, vendedorId } = parse.data;
+
+  const caixaAberto = await prisma.caixa.findFirst({ where: { tenantId, status: 'ABERTO' } });
+  if (!caixaAberto) {
+    return res.status(400).json({ erro: 'Abra o caixa antes de registrar uma venda.' });
+  }
+
+  if (vendedorId) {
+    const vendedor = await prisma.vendedor.findFirst({ where: { id: vendedorId, tenantId } });
+    if (!vendedor) return res.status(400).json({ erro: 'Vendedor inválido.' });
+  } else {
+    // Vendedor só é obrigatório pra lojas que já cadastraram algum — lojas
+    // que ainda não usam o recurso continuam vendendo normalmente.
+    const existeVendedor = await prisma.vendedor.findFirst({ where: { tenantId, ativo: true } });
+    if (existeVendedor) return res.status(400).json({ erro: 'Selecione o vendedor responsável pela venda.' });
+  }
 
   try {
     const transacao = await prisma.$transaction(async (tx) => {
@@ -127,6 +147,8 @@ vendasRouter.post('/', async (req, res) => {
           formaPagamento,
           usuarioId,
           clienteId: clienteId || undefined,
+          caixaId: caixaAberto.id,
+          vendedorId: vendedorId || undefined,
           itens: { create: itensResolvidos },
         },
         include: { itens: true },

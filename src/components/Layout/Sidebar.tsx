@@ -8,6 +8,7 @@ const icones: Record<string, string> = {
   estoque: '▤',
   financeiro: '◈',
   clientes: '◍',
+  vendedores: '◔',
   relatorios: '▥',
 };
 

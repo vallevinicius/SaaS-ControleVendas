@@ -1,4 +1,5 @@
 import type {
+  Caixa,
   Categoria,
   Cliente,
   LancamentoFinanceiro,
@@ -11,6 +12,8 @@ import type {
   TelaComPermissao,
   TipoLancamentoFinanceiro,
   Usuario,
+  Vendedor,
+  VendaResumo,
   FormaPagamento,
   AtributoCustomizadoDefinicao,
   AtributoCustomizadoValor,
@@ -198,6 +201,7 @@ export interface NovaVendaPayload {
   parcelas?: number;
   formaPagamento: FormaPagamento;
   clienteId?: string;
+  vendedorId?: string;
 }
 
 export async function registerSale(payload: NovaVendaPayload): Promise<Transacao> {
@@ -300,4 +304,57 @@ export async function setUsuarioAtivo(id: string, ativo: boolean): Promise<void>
 
 export async function setUsuarioPermissoes(id: string, permissoes: TelaComPermissao[]): Promise<Usuario> {
   return requisitar(`/usuarios/${id}/permissoes`, { method: 'PUT', body: JSON.stringify({ permissoes }) });
+}
+
+// ----------------------------------------------------------------------------
+// CAIXA (turno de PDV — abrir/fechar)
+// ----------------------------------------------------------------------------
+
+export async function getCaixaAtual(): Promise<Caixa | null> {
+  return requisitar('/caixa/atual');
+}
+
+export async function abrirCaixa(valorAbertura: number): Promise<Caixa> {
+  return requisitar('/caixa/abrir', { method: 'POST', body: JSON.stringify({ valorAbertura }) });
+}
+
+export interface FecharCaixaPayload {
+  valorContado?: number;
+  observacao?: string;
+}
+
+export async function fecharCaixa(caixaId: string, payload: FecharCaixaPayload): Promise<Caixa> {
+  return requisitar(`/caixa/${caixaId}/fechar`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function getHistoricoCaixas(): Promise<Caixa[]> {
+  return requisitar('/caixa');
+}
+
+export async function getVendasDoCaixa(caixaId: string): Promise<VendaResumo[]> {
+  return requisitar(`/caixa/${caixaId}/vendas`);
+}
+
+// ----------------------------------------------------------------------------
+// VENDEDORES (quem fez a venda, pra apuração de comissão)
+// ----------------------------------------------------------------------------
+
+export async function getVendedores(): Promise<Vendedor[]> {
+  return requisitar('/vendedores');
+}
+
+export interface NovoVendedorPayload {
+  nome: string;
+  comissaoPercentual?: number;
+}
+
+export async function createVendedor(dados: NovoVendedorPayload): Promise<Vendedor> {
+  return requisitar('/vendedores', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function updateVendedor(
+  id: string,
+  dados: Partial<NovoVendedorPayload> & { ativo?: boolean },
+): Promise<Vendedor> {
+  return requisitar(`/vendedores/${id}`, { method: 'PUT', body: JSON.stringify(dados) });
 }

@@ -173,7 +173,7 @@ export function FinanceiroScreen() {
               type="number"
               min={0.01}
               step={0.01}
-              value={valor}
+              value={valor === 0 ? '' : valor}
               onChange={(e) => setValor(Number(e.target.value) || 0)}
               className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
             />

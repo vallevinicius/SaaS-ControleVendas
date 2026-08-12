@@ -10,6 +10,7 @@ import { DashboardScreen } from '@/components/Dashboard/DashboardScreen';
 import { PDVScreen } from '@/components/PDV/PDVScreen';
 import { EstoqueScreen } from '@/components/Estoque/EstoqueScreen';
 import { ClientesScreen } from '@/components/Clientes/ClientesScreen';
+import { VendedoresScreen } from '@/components/Vendedores/VendedoresScreen';
 import { RelatoriosScreen } from '@/components/Relatorios/RelatoriosScreen';
 import { FinanceiroScreen } from '@/components/Financeiro/FinanceiroScreen';
 import { UsuariosScreen } from '@/components/Usuarios/UsuariosScreen';
@@ -119,6 +120,14 @@ function Roteador() {
         element={
           <RotaProtegida tela="clientes">
             <ClientesScreen />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/vendedores"
+        element={
+          <RotaProtegida tela="vendedores">
+            <VendedoresScreen />
           </RotaProtegida>
         }
       />

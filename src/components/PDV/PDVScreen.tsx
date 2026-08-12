@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/Layout/AppLayout';
+import { LoadingState } from '@/components/Common/LoadingState';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
-import { searchProducts, registerSale, getClientes } from '@/services/apiService';
-import { formatarMoeda } from '@/utils/formatters';
-import type { Cliente, FormaPagamento, Produto } from '@/types';
+import {
+  searchProducts,
+  registerSale,
+  getClientes,
+  getVendedores,
+  getCaixaAtual,
+  abrirCaixa,
+  fecharCaixa,
+  getHistoricoCaixas,
+  getVendasDoCaixa,
+} from '@/services/apiService';
+import { formatarMoeda, formatarHora, formatarFormaPagamento } from '@/utils/formatters';
+import { AbrirCaixaCard } from './AbrirCaixaCard';
+import { FecharCaixaModal } from './FecharCaixaModal';
+import type { Caixa, Cliente, FormaPagamento, Produto, Vendedor, VendaResumo } from '@/types';
 
 interface ItemCarrinho {
   produto: Produto;
@@ -29,18 +42,32 @@ const SEM_SPINNER_NATIVO =
 
 /**
  * Tela de Frente de Caixa (PDV):
- * - Busca produto por nome/SKU
- * - Adiciona quantidade ao carrinho, com preço ajustável por item
- * - Desconto em % sobre o subtotal
- * - Cartão de crédito soma 5% de taxa e permite parcelar em até 3x
- * - Permite vincular um cliente (opcional)
- *
- * A tela NÃO manipula nenhum array de dados global: toda leitura/escrita
- * passa pelo apiService, autenticado via JWT do tenant/usuário logados.
+ * - Exige um caixa ABERTO pra vender — sem isso, mostra só a tela de abrir
+ *   caixa. Cada abertura começa um turno novo, com totais zerados; ao
+ *   fechar, o turno vira histórico e um novo pode ser aberto depois (outro
+ *   dia, por exemplo) já começando do zero.
+ * - As vendas continuam gravadas pra sempre e aparecem em Relatórios
+ *   independente do caixa estar aberto ou fechado — fechar o caixa só
+ *   encerra o turno, não apaga nada.
+ * - Busca produto por nome/SKU, adiciona ao carrinho com preço ajustável.
+ * - Desconto em % sobre o subtotal.
+ * - Cartão de crédito soma 5% de taxa e permite parcelar em até 3x.
+ * - Permite vincular um cliente (opcional).
  */
 export function PDVScreen() {
   const { tenant } = useTenant();
   const toast = useToast();
+
+  const [caixa, setCaixa] = useState<Caixa | null>(null);
+  const [carregandoCaixa, setCarregandoCaixa] = useState(true);
+  const [historicoCaixas, setHistoricoCaixas] = useState<Caixa[]>([]);
+  const [carregandoHistorico, setCarregandoHistorico] = useState(true);
+  const [mostrarFecharCaixa, setMostrarFecharCaixa] = useState(false);
+
+  const [vendasDoCaixa, setVendasDoCaixa] = useState<VendaResumo[]>([]);
+  const [carregandoVendas, setCarregandoVendas] = useState(true);
+  const [mostrarNovaVenda, setMostrarNovaVenda] = useState(false);
+
   const [termoBusca, setTermoBusca] = useState('');
   const [resultados, setResultados] = useState<Produto[]>([]);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
@@ -52,6 +79,44 @@ export function PDVScreen() {
   const [termoCliente, setTermoCliente] = useState('');
   const [resultadosClientes, setResultadosClientes] = useState<Cliente[]>([]);
   const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null);
+
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [vendedorId, setVendedorId] = useState<string>('');
+
+  async function carregarVendasDoCaixa(caixaId: string) {
+    setCarregandoVendas(true);
+    try {
+      setVendasDoCaixa(await getVendasDoCaixa(caixaId));
+    } finally {
+      setCarregandoVendas(false);
+    }
+  }
+
+  async function carregarCaixa() {
+    setCarregandoCaixa(true);
+    try {
+      const atual = await getCaixaAtual();
+      setCaixa(atual);
+      if (atual) await carregarVendasDoCaixa(atual.id);
+    } finally {
+      setCarregandoCaixa(false);
+    }
+  }
+
+  async function carregarHistorico() {
+    setCarregandoHistorico(true);
+    try {
+      setHistoricoCaixas(await getHistoricoCaixas());
+    } finally {
+      setCarregandoHistorico(false);
+    }
+  }
+
+  useEffect(() => {
+    carregarCaixa();
+    carregarHistorico();
+    getVendedores().then((lista) => setVendedores(lista.filter((v) => v.ativo)));
+  }, []);
 
   useEffect(() => {
     const termo = termoBusca.trim();
@@ -83,6 +148,33 @@ export function PDVScreen() {
     };
   }, [termoCliente]);
 
+  async function handleAbrirCaixa(valorAbertura: number) {
+    try {
+      await abrirCaixa(valorAbertura);
+      toast.sucesso('Caixa aberto.');
+      await carregarCaixa();
+      await carregarHistorico();
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao abrir caixa.');
+    }
+  }
+
+  async function handleFecharCaixa(valorContado?: number, observacao?: string) {
+    if (!caixa) return;
+    // O próprio FecharCaixaModal já mostra o resumo e exige um clique
+    // explícito de confirmação — não precisa de outro "tem certeza?" em
+    // cima disso.
+    try {
+      await fecharCaixa(caixa.id, { valorContado, observacao });
+      toast.sucesso('Caixa fechado.');
+      setMostrarFecharCaixa(false);
+      await carregarCaixa();
+      await carregarHistorico();
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao fechar caixa.');
+    }
+  }
+
   function adicionarAoCarrinho(produto: Produto) {
     setCarrinho((atual) => {
       const existente = atual.find((i) => i.produto.id === produto.id);
@@ -111,6 +203,17 @@ export function PDVScreen() {
     setCarrinho((atual) => atual.filter((i) => i.produto.id !== productId));
   }
 
+  function cancelarNovaVenda() {
+    setCarrinho([]);
+    setTermoBusca('');
+    setResultados([]);
+    setDescontoPercentual(0);
+    setParcelas(1);
+    setClienteSelecionado(null);
+    setTermoCliente('');
+    setMostrarNovaVenda(false);
+  }
+
   function handleMudarFormaPagamento(forma: FormaPagamento) {
     setFormaPagamento(forma);
     if (forma !== 'CARTAO_CREDITO') setParcelas(1);
@@ -126,8 +229,10 @@ export function PDVScreen() {
   const valorTaxaCartao = ehCartaoCredito ? Number((subtotalComDesconto * TAXA_CARTAO_CREDITO).toFixed(2)) : 0;
   const totalFinal = subtotalComDesconto + valorTaxaCartao;
 
+  const vendedorObrigatorioFaltando = vendedores.length > 0 && !vendedorId;
+
   async function finalizarVenda() {
-    if (carrinho.length === 0) return;
+    if (carrinho.length === 0 || vendedorObrigatorioFaltando) return;
     setProcessando(true);
     try {
       await registerSale({
@@ -141,6 +246,7 @@ export function PDVScreen() {
         parcelas: ehCartaoCredito ? parcelas : 1,
         formaPagamento,
         clienteId: clienteSelecionado?.id,
+        vendedorId: vendedorId || undefined,
       });
       toast.sucesso(`Venda finalizada às ${new Date().toLocaleTimeString('pt-BR')}.`);
       setCarrinho([]);
@@ -148,6 +254,8 @@ export function PDVScreen() {
       setParcelas(1);
       setClienteSelecionado(null);
       setTermoCliente('');
+      setMostrarNovaVenda(false);
+      carregarCaixa();
     } catch (erro) {
       toast.erro(erro instanceof Error ? erro.message : 'Erro ao finalizar venda.');
     } finally {
@@ -155,9 +263,113 @@ export function PDVScreen() {
     }
   }
 
+  if (carregandoCaixa) {
+    return (
+      <AppLayout titulo="Caixa" subtitulo="Busque um produto, monte o carrinho e finalize a venda">
+        <LoadingState mensagem="Verificando o caixa…" />
+      </AppLayout>
+    );
+  }
+
+  if (!caixa) {
+    return (
+      <AppLayout titulo="Caixa" subtitulo="Abra o caixa para começar a vender">
+        <AbrirCaixaCard historico={historicoCaixas} carregandoHistorico={carregandoHistorico} aoAbrir={handleAbrirCaixa} />
+      </AppLayout>
+    );
+  }
+
   return (
-    <AppLayout titulo="Frente de Caixa" subtitulo="Busque um produto, monte o carrinho e finalize a venda">
-      <div className="grid h-full grid-cols-[1fr_380px] gap-6">
+    <AppLayout
+      titulo="Caixa"
+      subtitulo={
+        mostrarNovaVenda ? 'Busque um produto, monte o carrinho e finalize a venda' : 'Vendas feitas neste turno de caixa'
+      }
+    >
+      <div className="mb-4 flex items-center justify-between rounded-xl border border-ink-700 bg-ink-800 px-5 py-3">
+        <div className="text-sm">
+          <span className="font-medium text-ink-100">Caixa aberto</span>
+          <span className="text-ink-400">
+            {' '}
+            às {new Date(caixa.abertoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} por{' '}
+            {caixa.abertoPorNome}
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-sm">
+          <span className="text-ink-400">
+            {caixa.resumo.quantidadeVendas} venda(s) · <span className="font-mono text-ink-100">{formatarMoeda(caixa.resumo.totalVendido, tenant)}</span>
+          </span>
+          <button
+            onClick={() => setMostrarFecharCaixa(true)}
+            className="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 hover:border-red-400 hover:text-red-400"
+          >
+            Fechar caixa
+          </button>
+        </div>
+      </div>
+
+      {!mostrarNovaVenda ? (
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-ink-200">Vendas de hoje</p>
+              <p className="text-xs text-ink-500">{vendasDoCaixa.length} venda(s) neste turno</p>
+            </div>
+            <button
+              onClick={() => setMostrarNovaVenda(true)}
+              className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
+            >
+              + Nova venda
+            </button>
+          </div>
+
+          {carregandoVendas ? (
+            <LoadingState mensagem="Carregando vendas…" />
+          ) : vendasDoCaixa.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-ink-700 p-10 text-center">
+              <p className="text-sm text-ink-400">Nenhuma venda neste turno ainda. Clique em "+ Nova venda" para começar.</p>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-ink-700">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-ink-800 text-xs uppercase tracking-wide text-ink-400">
+                  <tr>
+                    <th className="px-5 py-3 font-medium">Hora</th>
+                    <th className="px-5 py-3 font-medium">Cliente</th>
+                    <th className="px-5 py-3 font-medium">Vendedor</th>
+                    <th className="px-5 py-3 font-medium">Forma de pagamento</th>
+                    <th className="px-5 py-3 font-medium text-right">Itens</th>
+                    <th className="px-5 py-3 font-medium text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink-700 bg-ink-800/40">
+                  {vendasDoCaixa.map((venda) => (
+                    <tr key={venda.id} className="transition-colors hover:bg-ink-800">
+                      <td className="px-5 py-3.5 text-ink-300">{formatarHora(venda.timestamp, tenant)}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{venda.clienteNome ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{venda.vendedorNome ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{formatarFormaPagamento(venda.formaPagamento)}</td>
+                      <td className="px-5 py-3.5 text-right text-ink-300">{venda.quantidadeItens}</td>
+                      <td className="px-5 py-3.5 text-right font-mono text-ink-100">
+                        {formatarMoeda(venda.valorTotal, tenant)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <button
+            onClick={cancelarNovaVenda}
+            className="mb-4 text-sm text-ink-400 hover:text-ink-100"
+          >
+            ← Voltar para as vendas do turno
+          </button>
+
+          <div className="grid h-[calc(100%-4rem)] grid-cols-[1fr_380px] gap-6">
         {/* Coluna de busca + resultados */}
         <section className="flex flex-col gap-4">
           <div className="relative">
@@ -208,7 +420,7 @@ export function PDVScreen() {
                           type="number"
                           min={0}
                           step={0.01}
-                          value={item.precoUnitario}
+                          value={item.precoUnitario === 0 ? '' : item.precoUnitario}
                           onChange={(e) => alterarPrecoItem(item.produto.id, Number(e.target.value) || 0)}
                           aria-label={`Preço unitário de ${item.produto.nome}`}
                           className={[
@@ -302,6 +514,27 @@ export function PDVScreen() {
             )}
           </div>
 
+          {vendedores.length > 0 && (
+            <label className="mb-4 block text-xs font-medium uppercase tracking-wide text-ink-400">
+              Vendedor
+              <select
+                required
+                value={vendedorId}
+                onChange={(e) => setVendedorId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-sm normal-case text-ink-100 focus:border-tenant focus:outline-none"
+              >
+                <option value="" disabled>
+                  Selecione…
+                </option>
+                {vendedores.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <div className="space-y-3 text-sm">
             <div className="flex justify-between text-ink-300">
               <span>Subtotal</span>
@@ -323,7 +556,7 @@ export function PDVScreen() {
                     type="number"
                     min={0}
                     max={100}
-                    value={descontoPercentual}
+                    value={descontoPercentual === 0 ? '' : descontoPercentual}
                     onChange={(e) => setDescontoPercentual(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
                     aria-label="Percentual de desconto"
                     className={['w-9 bg-transparent text-right font-mono text-ink-100 outline-none', SEM_SPINNER_NATIVO].join(' ')}
@@ -411,22 +644,32 @@ export function PDVScreen() {
 
           <button
             onClick={finalizarVenda}
-            disabled={carrinho.length === 0 || processando}
+            disabled={carrinho.length === 0 || processando || vendedorObrigatorioFaltando}
             className="mt-auto pt-6 text-center"
           >
             <span
               className={[
                 'block w-full rounded-xl bg-tenant py-3.5 text-sm font-semibold text-tenant-foreground transition-opacity hover:opacity-90',
-                (carrinho.length === 0 || processando) && 'cursor-not-allowed opacity-40',
+                (carrinho.length === 0 || processando || vendedorObrigatorioFaltando) && 'cursor-not-allowed opacity-40',
               ]
                 .filter(Boolean)
                 .join(' ')}
             >
-              {processando ? 'Finalizando…' : 'Finalizar venda'}
+              {processando ? 'Finalizando…' : vendedorObrigatorioFaltando ? 'Selecione um vendedor' : 'Finalizar venda'}
             </span>
           </button>
         </aside>
-      </div>
+          </div>
+        </>
+      )}
+
+      {mostrarFecharCaixa && (
+        <FecharCaixaModal
+          caixa={caixa}
+          aoFechar={() => setMostrarFecharCaixa(false)}
+          aoConfirmar={handleFecharCaixa}
+        />
+      )}
     </AppLayout>
   );
 }

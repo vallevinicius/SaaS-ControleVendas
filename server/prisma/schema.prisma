@@ -39,6 +39,11 @@ enum TipoLancamentoFinanceiro {
   DESPESA
 }
 
+enum StatusCaixa {
+  ABERTO
+  FECHADO
+}
+
 model Tenant {
   id                      String    @id @default(uuid())
   nomeFantasia            String
@@ -65,6 +70,8 @@ model Tenant {
   clientes              Cliente[]
   transacoes            Transacao[]
   lancamentosFinanceiros LancamentoFinanceiro[]
+  caixas                Caixa[]
+  vendedores            Vendedor[]
 }
 
 model Usuario {
@@ -88,6 +95,8 @@ model Usuario {
   tenant                 Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   transacoes             Transacao[]
   lancamentosFinanceiros LancamentoFinanceiro[]
+  caixasAbertos          Caixa[]                @relation("CaixaAbertoPor")
+  caixasFechados         Caixa[]                @relation("CaixaFechadoPor")
 
   @@index([tenantId])
 }
@@ -142,6 +151,24 @@ model Cliente {
   @@index([tenantId])
 }
 
+/// Quem fez a venda no PDV, pra apurar comissão — não é necessariamente um
+/// login do sistema (Usuario). Um Usuario pode vender sem estar cadastrado
+/// aqui, e um Vendedor pode nunca ter feito login (ex: vendedor externo).
+model Vendedor {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  nome               String
+  /// % de comissão sobre o valor vendido (ex: 5 = 5%). 0 = sem comissão.
+  comissaoPercentual Decimal  @default(0) @db.Decimal(5, 2)
+  ativo              Boolean  @default(true)
+  criadoEm           DateTime @default(now())
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendas Transacao[]
+
+  @@index([tenantId])
+}
+
 model Transacao {
   id             String            @id @default(uuid())
   tenantId       String
@@ -155,14 +182,23 @@ model Transacao {
   parcelas       Int               @default(1)
   usuarioId      String
   clienteId      String?
+  /// Turno de caixa em que a venda foi feita (só para tipo SAIDA vindo do
+  /// PDV — entradas de estoque não têm caixa).
+  caixaId        String?
+  /// Quem fez a venda, pra apuração de comissão (opcional).
+  vendedorId     String?
   observacao     String?
 
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   usuario  Usuario         @relation(fields: [usuarioId], references: [id])
   cliente  Cliente?        @relation(fields: [clienteId], references: [id])
+  caixa    Caixa?          @relation(fields: [caixaId], references: [id])
+  vendedor Vendedor?       @relation(fields: [vendedorId], references: [id])
   itens    ItemTransacao[]
 
   @@index([tenantId, timestamp])
+  @@index([vendedorId])
+  @@index([caixaId])
 }
 
 model ItemTransacao {
@@ -196,6 +232,31 @@ model LancamentoFinanceiro {
   usuario Usuario @relation(fields: [usuarioId], references: [id])
 
   @@index([tenantId, data])
+}
+
+/// Um turno de caixa: abre com um valor inicial em dinheiro, acumula as
+/// vendas feitas no PDV enquanto está ABERTO, e fecha com a contagem final
+/// informada pelo operador. Enquanto não houver um Caixa ABERTO, o PDV não
+/// deixa vender. As vendas continuam todas visíveis pra sempre em
+/// Relatórios — fechar o caixa só encerra o turno, não apaga nada.
+model Caixa {
+  id                      String      @id @default(uuid())
+  tenantId                String
+  status                  StatusCaixa @default(ABERTO)
+  valorAbertura           Decimal     @db.Decimal(12, 2)
+  abertoEm                DateTime    @default(now())
+  abertoPorId             String
+  valorContadoFechamento  Decimal?    @db.Decimal(12, 2)
+  observacaoFechamento    String?
+  fechadoEm               DateTime?
+  fechadoPorId            String?
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  abertoPor  Usuario     @relation("CaixaAbertoPor", fields: [abertoPorId], references: [id])
+  fechadoPor Usuario?    @relation("CaixaFechadoPor", fields: [fechadoPorId], references: [id])
+  vendas     Transacao[]
+
+  @@index([tenantId, status])
 }
 
 /// Conta interna da Total Software (dona do SaaS) — não pertence a nenhum

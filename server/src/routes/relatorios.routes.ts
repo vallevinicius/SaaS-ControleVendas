@@ -25,7 +25,7 @@ relatoriosRouter.get('/vendas', async (req, res) => {
         lte: fim ?? undefined,
       },
     },
-    include: { itens: true, cliente: true },
+    include: { itens: true, cliente: true, vendedor: true },
     orderBy: { timestamp: 'desc' },
   });
 
@@ -63,6 +63,34 @@ relatoriosRouter.get('/vendas', async (req, res) => {
     .sort((a, b) => b.quantidadeVendida - a.quantidadeVendida)
     .slice(0, 10);
 
+  const acumuladoPorVendedor = new Map<
+    string,
+    { nome: string; comissaoPercentual: number; quantidade: number; totalVendido: number }
+  >();
+  for (const venda of vendas) {
+    if (!venda.vendedor) continue;
+    const atual = acumuladoPorVendedor.get(venda.vendedor.id) ?? {
+      nome: venda.vendedor.nome,
+      comissaoPercentual: Number(venda.vendedor.comissaoPercentual),
+      quantidade: 0,
+      totalVendido: 0,
+    };
+    atual.quantidade += 1;
+    atual.totalVendido += Number(venda.valorTotal);
+    acumuladoPorVendedor.set(venda.vendedor.id, atual);
+  }
+
+  const vendasPorVendedor = Array.from(acumuladoPorVendedor.entries())
+    .map(([vendedorId, dados]) => ({
+      vendedorId,
+      nome: dados.nome,
+      quantidadeVendas: dados.quantidade,
+      totalVendido: Number(dados.totalVendido.toFixed(2)),
+      comissaoPercentual: dados.comissaoPercentual,
+      comissaoAPagar: Number(((dados.totalVendido * dados.comissaoPercentual) / 100).toFixed(2)),
+    }))
+    .sort((a, b) => b.totalVendido - a.totalVendido);
+
   res.json({
     faturamentoTotal,
     quantidadeVendas,
@@ -71,12 +99,14 @@ relatoriosRouter.get('/vendas', async (req, res) => {
       Array.from(totaisPorFormaPagamento.entries()).map(([k, v]) => [k, Number(v.toFixed(2))]),
     ),
     produtosMaisVendidos,
+    vendasPorVendedor,
     vendas: vendas.map((v) => ({
       id: v.id,
       timestamp: v.timestamp.toISOString(),
       valorTotal: Number(v.valorTotal),
       formaPagamento: v.formaPagamento ?? undefined,
       clienteNome: v.cliente?.nome,
+      vendedorNome: v.vendedor?.nome,
       quantidadeItens: v.itens.reduce((acc, i) => acc + i.quantidade, 0),
     })),
   });

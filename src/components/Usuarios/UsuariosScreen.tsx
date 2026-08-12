@@ -34,7 +34,7 @@ function PermissoesChecklist({ papel, selecionadas, aoAlterar }: PermissoesCheck
 
   return (
     <div className="grid grid-cols-3 gap-2">
-      {TELAS_COM_PERMISSAO.map((tela) => (
+      {TELAS_COM_PERMISSAO.filter((tela) => tela.chave !== 'vendedores').map((tela) => (
         <label
           key={tela.chave}
           className={[
@@ -53,6 +53,9 @@ function PermissoesChecklist({ papel, selecionadas, aoAlterar }: PermissoesCheck
           {tela.rotulo}
         </label>
       ))}
+      <p className="col-span-3 mt-1 text-xs text-ink-500">
+        "Vendedores" não aparece aqui: só a conta principal da loja tem acesso a essa tela.
+      </p>
     </div>
   );
 }

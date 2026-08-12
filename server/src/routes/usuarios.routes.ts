@@ -7,7 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 export const usuariosRouter = Router();
 usuariosRouter.use(requireAuth);
 
-const TELAS_VALIDAS = ['dashboard', 'pdv', 'estoque', 'financeiro', 'clientes', 'relatorios'] as const;
+const TELAS_VALIDAS = ['dashboard', 'pdv', 'estoque', 'financeiro', 'clientes', 'vendedores', 'relatorios'] as const;
 const permissoesSchema = z.array(z.enum(TELAS_VALIDAS));
 
 function serializarUsuario(u: {
