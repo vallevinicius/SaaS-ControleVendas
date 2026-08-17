@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { verificarLimiteRecurso } from '../middleware/plano.js';
 
 export const produtosRouter = Router();
 produtosRouter.use(requireAuth);
@@ -87,6 +88,11 @@ produtosRouter.post('/', async (req, res) => {
   const categoria = await prisma.categoria.findFirst({ where: { id: parse.data.categoriaId, tenantId } });
   if (!categoria) {
     return res.status(400).json({ erro: 'Categoria inválida.' });
+  }
+
+  const limiteExcedido = await verificarLimiteRecurso(tenantId, 'produtos');
+  if (limiteExcedido) {
+    return res.status(403).json(limiteExcedido);
   }
 
   const produto = await prisma.produto.create({

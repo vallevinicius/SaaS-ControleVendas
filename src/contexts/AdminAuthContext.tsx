@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { adminLogin, adminLogout, adminListTenants, getAdminToken } from '@/services/adminApiService';
+import { adminLogin, adminLogout, adminListEmpresas, getAdminToken } from '@/services/adminApiService';
 
 /**
  * AdminAuthContext
@@ -36,7 +36,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       try {
         // Não há endpoint "/me" para admin — valida o token testando a
         // primeira chamada real que a tela vai precisar de qualquer forma.
-        await adminListTenants();
+        await adminListEmpresas();
         setAutenticado(true);
       } catch {
         adminLogout();

@@ -19,6 +19,7 @@ import { RegisterScreen } from '@/components/Auth/RegisterScreen';
 import { AdminLoginScreen } from '@/components/Admin/AdminLoginScreen';
 import { AdminDashboard } from '@/components/Admin/AdminDashboard';
 import { podeVerTela } from '@/utils/permissoes';
+import { planoPermiteTela } from '@/utils/planos';
 import type { TelaComPermissao } from '@/types';
 
 function TelaCarregando() {
@@ -34,10 +35,11 @@ function TelaCarregando() {
  * (ADMIN sempre tem; usuários sem permissoes.length também têm, pra não
  * bloquear contas de antes desse recurso existir). */
 function RotaProtegida({ children, tela }: { children: ReactNode; tela?: TelaComPermissao }) {
-  const { autenticado, carregando, usuarioAtual } = useTenant();
+  const { autenticado, carregando, usuarioAtual, tenant } = useTenant();
   if (carregando) return <TelaCarregando />;
   if (!autenticado) return <Navigate to="/login" replace />;
   if (tela && !podeVerTela(usuarioAtual, tela)) return <Navigate to="/" replace />;
+  if (tela && tenant && !planoPermiteTela(tenant.planoAtual, tela)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 

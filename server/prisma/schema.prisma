@@ -44,26 +44,44 @@ enum StatusCaixa {
   FECHADO
 }
 
+/// A conta que assina o plano do SaaS. Pode ter uma ou várias lojas (Tenant)
+/// — múltiplas lojas só é possível no plano ENTERPRISE (ver
+/// server/src/config/planos.ts). Suspender/promover/expirar trial acontece
+/// aqui, no nível da conta, e afeta todas as lojas dela de uma vez.
+model Empresa {
+  id            String    @id @default(uuid())
+  nome          String
+  planoAtual    PlanoSaaS @default(FREE)
+  /// Data em que o teste grátis do plano FREE expira. Null para empresas
+  /// criadas direto num plano pago. Ao expirar, o login é bloqueado até o
+  /// admin promover a empresa para um plano pago (ver server/src/routes/auth.routes.ts).
+  trialExpiraEm DateTime?
+  /// Empresa suspensa pela Total Software (ex: inadimplência, abuso) —
+  /// ninguém de nenhuma loja dela consegue logar enquanto estiver false.
+  ativo         Boolean   @default(true)
+  criadoEm      DateTime  @default(now())
+
+  lojas Tenant[]
+}
+
 model Tenant {
-  id                      String    @id @default(uuid())
+  id                      String   @id @default(uuid())
+  empresaId               String
   nomeFantasia            String
   razaoSocial             String?
-  cnpj                    String    @unique
+  cnpj                    String   @unique
   /// Meios de contato da empresa (não é o e-mail de login de nenhum usuário).
   telefone                String?
   email                   String?
-  planoAtual              PlanoSaaS @default(FREE)
-  logoDaLojaUrl           String    @db.Text
+  logoDaLojaUrl           String   @db.Text
   corPrincipalDoTema      String
   corPrincipalHover       String?
-  fusoHorario             String    @default("America/Sao_Paulo")
-  moeda                   String    @default("BRL")
-  exigirSenhaAoAbrirCaixa Boolean   @default(false)
-  /// Loja suspensa pela Total Software (ex: inadimplência, abuso) — ninguém
-  /// da loja consegue logar enquanto estiver false.
-  ativo                   Boolean   @default(true)
-  criadoEm                DateTime  @default(now())
+  fusoHorario             String   @default("America/Sao_Paulo")
+  moeda                   String   @default("BRL")
+  exigirSenhaAoAbrirCaixa Boolean  @default(false)
+  criadoEm                DateTime @default(now())
 
+  empresa               Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   usuarios              Usuario[]
   categorias            Categoria[]
   produtos              Produto[]
@@ -72,6 +90,24 @@ model Tenant {
   lancamentosFinanceiros LancamentoFinanceiro[]
   caixas                Caixa[]
   vendedores            Vendedor[]
+  acessosExtras         AcessoLoja[]
+
+  @@index([empresaId])
+}
+
+/// Concede a um Usuario acesso a uma loja além da sua loja de origem
+/// (Usuario.tenantId) — usado pra dono de conta ENTERPRISE controlar mais
+/// de uma loja com o mesmo login (ver server/src/routes/lojas.routes.ts).
+model AcessoLoja {
+  id        String   @id @default(uuid())
+  usuarioId String
+  tenantId  String
+  criadoEm  DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, tenantId])
 }
 
 model Usuario {
@@ -97,6 +133,7 @@ model Usuario {
   lancamentosFinanceiros LancamentoFinanceiro[]
   caixasAbertos          Caixa[]                @relation("CaixaAbertoPor")
   caixasFechados         Caixa[]                @relation("CaixaFechadoPor")
+  acessosExtras          AcessoLoja[]
 
   @@index([tenantId])
 }

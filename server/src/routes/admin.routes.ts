@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { assinarTokenAdmin, requirePlatformAdmin } from '../middleware/auth.js';
+import { calcularTrialExpiraEm } from '../config/planos.js';
 
 export const adminRouter = Router();
 
@@ -35,41 +36,52 @@ adminRouter.post('/login', async (req, res) => {
 
 adminRouter.use(requirePlatformAdmin);
 
-adminRouter.get('/tenants', async (_req, res) => {
-  const tenants = await prisma.tenant.findMany({
+adminRouter.get('/empresas', async (_req, res) => {
+  const empresas = await prisma.empresa.findMany({
     orderBy: { criadoEm: 'desc' },
     include: {
-      usuarios: {
-        orderBy: { nome: 'asc' },
-        select: { id: true, nome: true, email: true, papel: true, ativo: true, criadoEm: true },
+      lojas: {
+        orderBy: { criadoEm: 'asc' },
+        include: {
+          usuarios: {
+            orderBy: { nome: 'asc' },
+            select: { id: true, nome: true, email: true, papel: true, ativo: true, criadoEm: true },
+          },
+        },
       },
     },
   });
 
   res.json(
-    tenants.map((t) => ({
-      id: t.id,
-      nomeFantasia: t.nomeFantasia,
-      razaoSocial: t.razaoSocial ?? undefined,
-      cnpj: t.cnpj,
-      telefone: t.telefone ?? undefined,
-      email: t.email ?? undefined,
-      planoAtual: t.planoAtual,
-      ativo: t.ativo,
-      criadoEm: t.criadoEm.toISOString(),
-      usuarios: t.usuarios.map((u) => ({
-        id: u.id,
-        nome: u.nome,
-        email: u.email,
-        papel: u.papel,
-        ativo: u.ativo,
-        criadoEm: u.criadoEm.toISOString(),
+    empresas.map((e) => ({
+      id: e.id,
+      nome: e.nome,
+      planoAtual: e.planoAtual,
+      trialExpiraEm: e.trialExpiraEm?.toISOString() ?? undefined,
+      ativo: e.ativo,
+      criadoEm: e.criadoEm.toISOString(),
+      lojas: e.lojas.map((t) => ({
+        id: t.id,
+        nomeFantasia: t.nomeFantasia,
+        razaoSocial: t.razaoSocial ?? undefined,
+        cnpj: t.cnpj,
+        telefone: t.telefone ?? undefined,
+        email: t.email ?? undefined,
+        criadoEm: t.criadoEm.toISOString(),
+        usuarios: t.usuarios.map((u) => ({
+          id: u.id,
+          nome: u.nome,
+          email: u.email,
+          papel: u.papel,
+          ativo: u.ativo,
+          criadoEm: u.criadoEm.toISOString(),
+        })),
       })),
     })),
   );
 });
 
-const novaLojaSchema = z.object({
+const novaEmpresaSchema = z.object({
   nomeFantasia: z.string().min(2),
   razaoSocial: z.string().optional(),
   cnpj: z.string().min(1),
@@ -81,8 +93,8 @@ const novaLojaSchema = z.object({
   senhaAdmin: z.string().min(6),
 });
 
-adminRouter.post('/tenants', async (req, res) => {
-  const parse = novaLojaSchema.safeParse(req.body);
+adminRouter.post('/empresas', async (req, res) => {
+  const parse = novaEmpresaSchema.safeParse(req.body);
   if (!parse.success) {
     return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
   }
@@ -99,17 +111,24 @@ adminRouter.post('/tenants', async (req, res) => {
 
   const senhaHash = await bcrypt.hash(senhaAdmin, 10);
 
-  const tenant = await prisma.$transaction(async (tx) => {
+  const empresa = await prisma.$transaction(async (tx) => {
+    const empresa = await tx.empresa.create({
+      data: {
+        nome: nomeFantasia,
+        planoAtual,
+        trialExpiraEm: planoAtual === 'FREE' ? calcularTrialExpiraEm() : undefined,
+      },
+    });
     const tenant = await tx.tenant.create({
       data: {
+        empresaId: empresa.id,
         nomeFantasia,
         razaoSocial,
         cnpj,
         telefone: telefone || undefined,
         email: email || undefined,
-        planoAtual,
         logoDaLojaUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nomeFantasia)}&backgroundType=gradientLinear`,
-        corPrincipalDoTema: '#2563EB',
+        corPrincipalDoTema: '#10B981',
       },
     });
     await tx.usuario.create({
@@ -123,46 +142,50 @@ adminRouter.post('/tenants', async (req, res) => {
       },
     });
     await tx.categoria.create({ data: { tenantId: tenant.id, nome: 'Geral' } });
-    return tenant;
+    return empresa;
   });
 
-  res.status(201).json({ id: tenant.id, nomeFantasia: tenant.nomeFantasia });
+  res.status(201).json({ id: empresa.id, nome: empresa.nome });
 });
 
-const tenantAtivoSchema = z.object({ ativo: z.boolean() });
+const empresaAtivoSchema = z.object({ ativo: z.boolean() });
 
-adminRouter.put('/tenants/:id/ativo', async (req, res) => {
-  const parse = tenantAtivoSchema.safeParse(req.body);
+adminRouter.put('/empresas/:id/ativo', async (req, res) => {
+  const parse = empresaAtivoSchema.safeParse(req.body);
   if (!parse.success) {
     return res.status(400).json({ erro: 'Valor inválido.' });
   }
 
-  const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id } });
-  if (!tenant) return res.status(404).json({ erro: 'Loja não encontrada.' });
+  const empresa = await prisma.empresa.findUnique({ where: { id: req.params.id } });
+  if (!empresa) return res.status(404).json({ erro: 'Empresa não encontrada.' });
 
-  const atualizado = await prisma.tenant.update({
-    where: { id: tenant.id },
+  const atualizado = await prisma.empresa.update({
+    where: { id: empresa.id },
     data: { ativo: parse.data.ativo },
   });
   res.json({ id: atualizado.id, ativo: atualizado.ativo });
 });
 
-adminRouter.delete('/tenants/:id', async (req, res) => {
-  const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id } });
-  if (!tenant) return res.status(404).json({ erro: 'Loja não encontrada.' });
+adminRouter.delete('/empresas/:id', async (req, res) => {
+  const empresa = await prisma.empresa.findUnique({ where: { id: req.params.id }, include: { lojas: true } });
+  if (!empresa) return res.status(404).json({ erro: 'Empresa não encontrada.' });
+
+  const tenantIds = empresa.lojas.map((t) => t.id);
 
   // Ordem explícita (em vez de confiar em cascade do banco): itens de
   // transação e transações primeiro, depois produtos (que dependem delas),
   // depois categorias (que dependem dos produtos), e o resto por último.
   await prisma.$transaction([
-    prisma.itemTransacao.deleteMany({ where: { transacao: { tenantId: tenant.id } } }),
-    prisma.transacao.deleteMany({ where: { tenantId: tenant.id } }),
-    prisma.produto.deleteMany({ where: { tenantId: tenant.id } }),
-    prisma.categoria.deleteMany({ where: { tenantId: tenant.id } }),
-    prisma.lancamentoFinanceiro.deleteMany({ where: { tenantId: tenant.id } }),
-    prisma.cliente.deleteMany({ where: { tenantId: tenant.id } }),
-    prisma.usuario.deleteMany({ where: { tenantId: tenant.id } }),
-    prisma.tenant.delete({ where: { id: tenant.id } }),
+    prisma.itemTransacao.deleteMany({ where: { transacao: { tenantId: { in: tenantIds } } } }),
+    prisma.transacao.deleteMany({ where: { tenantId: { in: tenantIds } } }),
+    prisma.produto.deleteMany({ where: { tenantId: { in: tenantIds } } }),
+    prisma.categoria.deleteMany({ where: { tenantId: { in: tenantIds } } }),
+    prisma.lancamentoFinanceiro.deleteMany({ where: { tenantId: { in: tenantIds } } }),
+    prisma.cliente.deleteMany({ where: { tenantId: { in: tenantIds } } }),
+    prisma.acessoLoja.deleteMany({ where: { tenantId: { in: tenantIds } } }),
+    prisma.usuario.deleteMany({ where: { tenantId: { in: tenantIds } } }),
+    prisma.tenant.deleteMany({ where: { id: { in: tenantIds } } }),
+    prisma.empresa.delete({ where: { id: empresa.id } }),
   ]);
 
   res.status(204).send();
@@ -172,20 +195,23 @@ const planoSchema = z.object({
   planoAtual: z.enum(['FREE', 'STARTER', 'PRO', 'ENTERPRISE']),
 });
 
-adminRouter.put('/tenants/:id/plano', async (req, res) => {
+adminRouter.put('/empresas/:id/plano', async (req, res) => {
   const parse = planoSchema.safeParse(req.body);
   if (!parse.success) {
     return res.status(400).json({ erro: 'Plano inválido.' });
   }
 
-  const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id } });
-  if (!tenant) return res.status(404).json({ erro: 'Loja não encontrada.' });
+  const empresa = await prisma.empresa.findUnique({ where: { id: req.params.id } });
+  if (!empresa) return res.status(404).json({ erro: 'Empresa não encontrada.' });
 
-  const atualizado = await prisma.tenant.update({
-    where: { id: tenant.id },
-    data: { planoAtual: parse.data.planoAtual },
+  const novoPlano = parse.data.planoAtual;
+  const trialExpiraEm = novoPlano === 'FREE' ? calcularTrialExpiraEm() : null;
+
+  const atualizado = await prisma.empresa.update({
+    where: { id: empresa.id },
+    data: { planoAtual: novoPlano, trialExpiraEm },
   });
-  res.json({ id: atualizado.id, planoAtual: atualizado.planoAtual });
+  res.json({ id: atualizado.id, planoAtual: atualizado.planoAtual, trialExpiraEm: atualizado.trialExpiraEm });
 });
 
 const ativoSchema = z.object({ ativo: z.boolean() });

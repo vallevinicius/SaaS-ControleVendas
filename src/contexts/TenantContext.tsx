@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { Tenant, Usuario } from '@/types';
+import type { LojaResumo, Tenant, Usuario } from '@/types';
 import {
   getMe,
   getToken,
   login as apiLogin,
   logout as apiLogout,
   registrarLoja,
+  trocarLoja as apiTrocarLoja,
   type RegistrarLojaPayload,
 } from '@/services/apiService';
 
@@ -25,12 +26,15 @@ import {
 interface TenantContextValue {
   tenant: Tenant | null;
   usuarioAtual: Usuario | null;
+  lojas: LojaResumo[];
   carregando: boolean;
   erro: string | null;
   autenticado: boolean;
   login: (email: string, senha: string) => Promise<void>;
   registrar: (payload: RegistrarLojaPayload) => Promise<void>;
   logout: () => void;
+  trocarLoja: (tenantId: string) => Promise<void>;
+  recarregarSessao: () => Promise<void>;
 }
 
 const TenantContext = createContext<TenantContextValue | undefined>(undefined);
@@ -38,6 +42,7 @@ const TenantContext = createContext<TenantContextValue | undefined>(undefined);
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [usuarioAtual, setUsuarioAtual] = useState<Usuario | null>(null);
+  const [lojas, setLojas] = useState<LojaResumo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -48,16 +53,19 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       if (!getToken()) {
         setTenant(null);
         setUsuarioAtual(null);
+        setLojas([]);
         return;
       }
-      const { usuario, tenant: tenantCarregado } = await getMe();
+      const { usuario, tenant: tenantCarregado, lojas: lojasCarregadas } = await getMe();
       setUsuarioAtual(usuario);
       setTenant(tenantCarregado);
+      setLojas(lojasCarregadas);
     } catch {
       // Token ausente/expirado/inválido — volta ao estado deslogado.
       apiLogout();
       setTenant(null);
       setUsuarioAtual(null);
+      setLojas([]);
     } finally {
       setCarregando(false);
     }
@@ -96,21 +104,37 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     apiLogout();
     setTenant(null);
     setUsuarioAtual(null);
+    setLojas([]);
+  }
+
+  async function trocarLoja(tenantId: string) {
+    setErro(null);
+    try {
+      await apiTrocarLoja(tenantId);
+      await carregarSessao();
+    } catch (e) {
+      const mensagem = e instanceof Error ? e.message : 'Erro ao trocar de loja.';
+      setErro(mensagem);
+      throw e;
+    }
   }
 
   const value = useMemo<TenantContextValue>(
     () => ({
       tenant,
       usuarioAtual,
+      lojas,
       carregando,
       erro,
       autenticado: Boolean(tenant && usuarioAtual),
       login,
       registrar,
       logout,
+      trocarLoja,
+      recarregarSessao: carregarSessao,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tenant, usuarioAtual, carregando, erro],
+    [tenant, usuarioAtual, lojas, carregando, erro],
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;

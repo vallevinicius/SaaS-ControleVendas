@@ -1,4 +1,4 @@
-import type { PlanoSaaS, TenantAdmin } from '@/types';
+import type { PlanoSaaS, EmpresaAdmin } from '@/types';
 
 /**
  * ============================================================================
@@ -64,18 +64,18 @@ export function adminLogout(): void {
   limparAdminToken();
 }
 
-export async function adminListTenants(): Promise<TenantAdmin[]> {
-  return requisitar('/admin/tenants');
+export async function adminListEmpresas(): Promise<EmpresaAdmin[]> {
+  return requisitar('/admin/empresas');
 }
 
-export async function adminSetPlano(tenantId: string, planoAtual: PlanoSaaS): Promise<void> {
-  await requisitar(`/admin/tenants/${tenantId}/plano`, {
+export async function adminSetPlano(empresaId: string, planoAtual: PlanoSaaS): Promise<void> {
+  await requisitar(`/admin/empresas/${empresaId}/plano`, {
     method: 'PUT',
     body: JSON.stringify({ planoAtual }),
   });
 }
 
-export interface NovaLojaPayload {
+export interface NovaEmpresaPayload {
   nomeFantasia: string;
   razaoSocial?: string;
   cnpj: string;
@@ -87,19 +87,19 @@ export interface NovaLojaPayload {
   senhaAdmin: string;
 }
 
-export async function adminCreateTenant(payload: NovaLojaPayload): Promise<void> {
-  await requisitar('/admin/tenants', { method: 'POST', body: JSON.stringify(payload) });
+export async function adminCreateEmpresa(payload: NovaEmpresaPayload): Promise<void> {
+  await requisitar('/admin/empresas', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function adminSetTenantAtivo(tenantId: string, ativo: boolean): Promise<void> {
-  await requisitar(`/admin/tenants/${tenantId}/ativo`, {
+export async function adminSetEmpresaAtivo(empresaId: string, ativo: boolean): Promise<void> {
+  await requisitar(`/admin/empresas/${empresaId}/ativo`, {
     method: 'PUT',
     body: JSON.stringify({ ativo }),
   });
 }
 
-export async function adminDeleteTenant(tenantId: string): Promise<void> {
-  await requisitar(`/admin/tenants/${tenantId}`, { method: 'DELETE' });
+export async function adminDeleteEmpresa(empresaId: string): Promise<void> {
+  await requisitar(`/admin/empresas/${empresaId}`, { method: 'DELETE' });
 }
 
 export async function adminSetUsuarioAtivo(usuarioId: string, ativo: boolean): Promise<void> {

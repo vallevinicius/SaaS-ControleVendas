@@ -115,7 +115,9 @@ export function PDVScreen() {
   useEffect(() => {
     carregarCaixa();
     carregarHistorico();
-    getVendedores().then((lista) => setVendedores(lista.filter((v) => v.ativo)));
+    getVendedores()
+      .then((lista) => setVendedores(lista.filter((v) => v.ativo)))
+      .catch(() => setVendedores([])); // módulo pode estar bloqueado pelo plano
   }, []);
 
   useEffect(() => {

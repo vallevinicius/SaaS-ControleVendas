@@ -41,6 +41,9 @@ export interface Tenant {
   telefone?: string;
   email?: string;
   planoAtual: PlanoSaaS;
+  /** Data em que o teste grátis expira (independe do plano — hoje o cadastro
+   * self-service já entra em STARTER com trial). Ausente fora do trial. */
+  trialExpiraEm?: string; // ISO date
   configuracoes: TenantConfiguracoes;
   criadoEm: string; // ISO date
 }
@@ -297,16 +300,33 @@ export interface UsuarioAdmin {
   criadoEm: string;
 }
 
-/** Loja (tenant), na visão do painel admin da plataforma. */
-export interface TenantAdmin {
+/** Loja, na visão do painel admin da plataforma — sempre dentro de uma EmpresaAdmin. */
+export interface LojaAdmin {
   id: string;
   nomeFantasia: string;
   razaoSocial?: string;
   cnpj: string;
   telefone?: string;
   email?: string;
-  planoAtual: PlanoSaaS;
-  ativo: boolean;
   criadoEm: string;
   usuarios: UsuarioAdmin[];
+}
+
+/** Empresa (a conta que assina o plano), na visão do painel admin da
+ * plataforma — pode ter uma ou mais lojas (múltiplas só no plano ENTERPRISE). */
+export interface EmpresaAdmin {
+  id: string;
+  nome: string;
+  planoAtual: PlanoSaaS;
+  trialExpiraEm?: string;
+  ativo: boolean;
+  criadoEm: string;
+  lojas: LojaAdmin[];
+}
+
+/** Loja que o usuário logado pode acessar — a de origem ou concedida via
+ * AcessoLoja (dono de conta ENTERPRISE controlando mais de uma loja). */
+export interface LojaResumo {
+  id: string;
+  nomeFantasia: string;
 }

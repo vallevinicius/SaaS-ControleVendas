@@ -10,6 +10,7 @@ import type {
   Tenant,
   Transacao,
   TelaComPermissao,
+  LojaResumo,
   TipoLancamentoFinanceiro,
   Usuario,
   Vendedor,
@@ -112,12 +113,31 @@ export async function registrarLoja(payload: RegistrarLojaPayload): Promise<void
   setToken(token);
 }
 
-export async function getMe(): Promise<{ usuario: Usuario; tenant: Tenant }> {
+export async function getMe(): Promise<{ usuario: Usuario; tenant: Tenant; lojas: LojaResumo[] }> {
   return requisitar('/auth/me');
 }
 
 export function logout(): void {
   limparToken();
+}
+
+/** Reemite o token pra outra loja que o usuário tem acesso (ver `lojas` em getMe). */
+export async function trocarLoja(tenantId: string): Promise<void> {
+  const { token } = await requisitar<{ token: string }>('/auth/trocar-loja', {
+    method: 'POST',
+    body: JSON.stringify({ tenantId }),
+  });
+  setToken(token);
+}
+
+export interface NovaLojaPayload {
+  nomeFantasia: string;
+  cnpj: string;
+}
+
+/** Criação self-service de uma loja adicional pra mesma empresa — só ENTERPRISE. */
+export async function criarLoja(dados: NovaLojaPayload): Promise<{ id: string; nomeFantasia: string }> {
+  return requisitar('/lojas', { method: 'POST', body: JSON.stringify(dados) });
 }
 
 // ----------------------------------------------------------------------------

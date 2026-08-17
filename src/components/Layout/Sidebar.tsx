@@ -1,6 +1,11 @@
+import { useState, type FormEvent } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
+import { useToast } from '@/contexts/ToastContext';
 import { TELAS_COM_PERMISSAO, podeVerTela } from '@/utils/permissoes';
+import { diasRestantesTrial, planoPermiteMultiLoja, planoPermiteTela } from '@/utils/planos';
+import { mascararCnpj } from '@/utils/mascaras';
+import { criarLoja } from '@/services/apiService';
 
 const icones: Record<string, string> = {
   dashboard: '◧',
@@ -15,14 +20,50 @@ const icones: Record<string, string> = {
 const itemUsuarios = { rota: '/usuarios', rotulo: 'Usuários', icone: '◑' };
 
 export function Sidebar() {
-  const { tenant, usuarioAtual } = useTenant();
+  const { tenant, usuarioAtual, lojas, trocarLoja, recarregarSessao } = useTenant();
+  const toast = useToast();
+  const [mostrarNovaLoja, setMostrarNovaLoja] = useState(false);
+  const [nomeFantasiaLoja, setNomeFantasiaLoja] = useState('');
+  const [cnpjLoja, setCnpjLoja] = useState('');
+  const [criandoLoja, setCriandoLoja] = useState(false);
 
+  const plano = tenant?.planoAtual;
   const itens = TELAS_COM_PERMISSAO.filter((tela) => podeVerTela(usuarioAtual, tela.chave)).map((tela) => ({
     rota: tela.rota,
     rotulo: tela.rotulo,
     icone: icones[tela.chave],
+    bloqueadoPeloPlano: plano ? !planoPermiteTela(plano, tela.chave) : false,
   }));
-  if (usuarioAtual?.papel === 'ADMIN') itens.push(itemUsuarios);
+  if (usuarioAtual?.papel === 'ADMIN') itens.push({ ...itemUsuarios, bloqueadoPeloPlano: false });
+
+  const diasTrial = diasRestantesTrial(tenant?.trialExpiraEm);
+  const podeCriarLoja = Boolean(usuarioAtual?.raiz && plano && planoPermiteMultiLoja(plano));
+
+  async function handleTrocarLoja(tenantId: string) {
+    if (tenantId === tenant?.id) return;
+    try {
+      await trocarLoja(tenantId);
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao trocar de loja.');
+    }
+  }
+
+  async function handleCriarLoja(e: FormEvent) {
+    e.preventDefault();
+    setCriandoLoja(true);
+    try {
+      await criarLoja({ nomeFantasia: nomeFantasiaLoja.trim(), cnpj: cnpjLoja.trim() });
+      toast.sucesso(`Loja "${nomeFantasiaLoja.trim()}" criada.`);
+      setNomeFantasiaLoja('');
+      setCnpjLoja('');
+      setMostrarNovaLoja(false);
+      await recarregarSessao();
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao criar loja.');
+    } finally {
+      setCriandoLoja(false);
+    }
+  }
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-ink-700 bg-ink-800">
@@ -40,39 +81,137 @@ export function Sidebar() {
         ) : (
           <div className="h-9 w-9 rounded-lg bg-tenant" />
         )}
-        <div className="min-w-0">
-          <p className="truncate font-display text-sm font-semibold text-ink-100">
-            {tenant?.nomeFantasia ?? 'Carregando…'}
-          </p>
+        <div className="min-w-0 flex-1">
+          {lojas.length > 1 ? (
+            <select
+              value={tenant?.id ?? ''}
+              onChange={(e) => handleTrocarLoja(e.target.value)}
+              className="w-full truncate rounded-md border border-ink-700 bg-ink-800 font-display text-sm font-semibold text-ink-100 focus:border-tenant focus:outline-none"
+            >
+              {lojas.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.nomeFantasia}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="truncate font-display text-sm font-semibold text-ink-100">
+              {tenant?.nomeFantasia ?? 'Carregando…'}
+            </p>
+          )}
           <p className="truncate text-xs text-ink-400">Plano {tenant?.planoAtual ?? '—'}</p>
+          {diasTrial !== null && (
+            <p className={['truncate text-xs', diasTrial <= 3 ? 'text-amber-400' : 'text-ink-500'].join(' ')}>
+              Teste grátis: {diasTrial > 0 ? `faltam ${diasTrial} dia(s)` : 'expirado'}
+            </p>
+          )}
         </div>
       </div>
 
+      {podeCriarLoja && (
+        <button
+          onClick={() => setMostrarNovaLoja(true)}
+          className="mx-3 mt-3 rounded-lg border border-dashed border-ink-600 px-3 py-2 text-left text-xs font-medium text-ink-300 hover:border-tenant hover:text-tenant"
+        >
+          + Nova loja
+        </button>
+      )}
+
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {itens.map((item) => (
-          <NavLink
-            key={item.rota}
-            to={item.rota}
-            end={item.rota === '/'}
-            className={({ isActive }) =>
-              [
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                isActive ? 'bg-tenant-soft text-tenant' : 'text-ink-200 hover:bg-ink-700 hover:text-ink-100',
-              ].join(' ')
-            }
-          >
-            <span aria-hidden className="text-base leading-none">
-              {item.icone}
-            </span>
-            {item.rotulo}
-          </NavLink>
-        ))}
+        {itens.map((item) =>
+          item.bloqueadoPeloPlano ? (
+            <div
+              key={item.rota}
+              title={`Disponível em planos superiores ao ${plano}`}
+              className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-ink-500 opacity-60"
+            >
+              <span aria-hidden className="text-base leading-none">
+                {item.icone}
+              </span>
+              {item.rotulo}
+              <span aria-hidden className="ml-auto text-xs">
+                🔒
+              </span>
+            </div>
+          ) : (
+            <NavLink
+              key={item.rota}
+              to={item.rota}
+              end={item.rota === '/'}
+              className={({ isActive }) =>
+                [
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                  isActive ? 'bg-tenant-soft text-tenant' : 'text-ink-200 hover:bg-ink-700 hover:text-ink-100',
+                ].join(' ')
+              }
+            >
+              <span aria-hidden className="text-base leading-none">
+                {item.icone}
+              </span>
+              {item.rotulo}
+            </NavLink>
+          ),
+        )}
       </nav>
 
       <div className="border-t border-ink-700 px-5 py-4 text-xs text-ink-400">
         <p className="truncate">{tenant?.razaoSocial}</p>
         <p>{tenant?.cnpj}</p>
       </div>
+
+      {mostrarNovaLoja && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-xl border border-ink-700 bg-ink-800 p-6">
+            <p className="font-display text-lg font-semibold text-ink-100">Nova loja</p>
+            <p className="mt-1 text-sm text-ink-400">
+              Cria mais uma loja pra sua empresa, com dados totalmente separados. Você continua acessando as duas
+              com o mesmo login.
+            </p>
+
+            <form onSubmit={handleCriarLoja} className="mt-4 space-y-3">
+              <label className="block text-sm text-ink-300">
+                Nome fantasia
+                <input
+                  required
+                  autoFocus
+                  value={nomeFantasiaLoja}
+                  onChange={(e) => setNomeFantasiaLoja(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
+                />
+              </label>
+              <label className="block text-sm text-ink-300">
+                CNPJ
+                <input
+                  required
+                  inputMode="numeric"
+                  value={cnpjLoja}
+                  onChange={(e) => setCnpjLoja(mascararCnpj(e.target.value))}
+                  placeholder="00.000.000/0001-00"
+                  maxLength={18}
+                  className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 placeholder:text-ink-400 focus:border-tenant focus:outline-none"
+                />
+              </label>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setMostrarNovaLoja(false)}
+                  className="rounded-lg px-4 py-2 text-sm text-ink-300 hover:text-ink-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={criandoLoja}
+                  className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {criandoLoja ? 'Criando…' : 'Criar loja'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

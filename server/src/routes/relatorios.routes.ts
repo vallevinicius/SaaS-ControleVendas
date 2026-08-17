@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireFeaturePlano } from '../middleware/plano.js';
 
 export const relatoriosRouter = Router();
-relatoriosRouter.use(requireAuth);
+relatoriosRouter.use(requireAuth, requireFeaturePlano('relatorios'));
 
 relatoriosRouter.get('/vendas', async (req, res) => {
   const { tenantId } = req.usuario!;

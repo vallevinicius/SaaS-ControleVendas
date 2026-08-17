@@ -7,6 +7,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { getUsuarios, createUsuario, setUsuarioAtivo, setUsuarioPermissoes } from '@/services/apiService';
 import { slugificarNomeLoja } from '@/utils/slug';
 import { TELAS_COM_PERMISSAO, PERMISSOES_PADRAO_POR_PAPEL } from '@/utils/permissoes';
+import { LIMITES_POR_PLANO } from '@/utils/planos';
 import type { PapelUsuario, TelaComPermissao, Usuario } from '@/types';
 
 const rotulosPapel: Record<string, string> = {
@@ -175,12 +176,22 @@ export function UsuariosScreen() {
     );
   }
 
+  const maxUsuarios = tenant ? LIMITES_POR_PLANO[tenant.planoAtual].maxUsuarios : null;
+  const limiteAtingido = maxUsuarios !== null && usuarios.length >= maxUsuarios;
+
   return (
     <AppLayout titulo="Usuários" subtitulo="Crie e gerencie os logins da sua loja, e o que cada um pode ver">
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex items-center justify-end gap-3">
+        {maxUsuarios !== null && (
+          <p className="text-xs text-ink-500">
+            {usuarios.length}/{maxUsuarios} usuário(s) do plano {tenant?.planoAtual}
+          </p>
+        )}
         <button
           onClick={() => setMostrarFormulario((atual) => !atual)}
-          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
+          disabled={!mostrarFormulario && limiteAtingido}
+          title={limiteAtingido ? `Limite de usuários do plano ${tenant?.planoAtual} atingido.` : undefined}
+          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {mostrarFormulario ? 'Cancelar' : '+ Novo login'}
         </button>

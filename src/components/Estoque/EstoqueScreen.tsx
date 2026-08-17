@@ -14,6 +14,7 @@ import {
   deactivateProduct,
 } from '@/services/apiService';
 import { formatarMoeda } from '@/utils/formatters';
+import { LIMITES_POR_PLANO } from '@/utils/planos';
 import type { Categoria, Produto } from '@/types';
 import { EntradaEstoqueModal } from './EntradaEstoqueModal';
 import { NovoProdutoModal } from './NovoProdutoModal';
@@ -74,6 +75,8 @@ export function EstoqueScreen() {
   }
 
   const produtosComEstoqueBaixo = produtos.filter((p) => p.quantidadeEmEstoque <= p.estoqueMinimo).length;
+  const maxProdutos = tenant ? LIMITES_POR_PLANO[tenant.planoAtual].maxProdutos : null;
+  const limiteAtingido = maxProdutos !== null && produtos.length >= maxProdutos;
 
   return (
     <AppLayout
@@ -84,10 +87,17 @@ export function EstoqueScreen() {
           : 'Todos os produtos estão em níveis saudáveis de estoque'
       }
     >
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex items-center justify-end gap-3">
+        {maxProdutos !== null && (
+          <p className="text-xs text-ink-500">
+            {produtos.length}/{maxProdutos} produto(s) do plano {tenant?.planoAtual}
+          </p>
+        )}
         <button
           onClick={() => setMostrarNovoProduto(true)}
-          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
+          disabled={limiteAtingido}
+          title={limiteAtingido ? `Limite de produtos do plano ${tenant?.planoAtual} atingido.` : undefined}
+          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           + Novo produto
         </button>

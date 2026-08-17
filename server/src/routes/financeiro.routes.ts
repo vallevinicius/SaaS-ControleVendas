@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireFeaturePlano } from '../middleware/plano.js';
 
 export const financeiroRouter = Router();
-financeiroRouter.use(requireAuth);
+financeiroRouter.use(requireAuth, requireFeaturePlano('financeiro'));
 
 /**
  * Datas vêm como "YYYY-MM-DD" e o Date as interpreta como meia-noite UTC —

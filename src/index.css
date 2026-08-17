@@ -5,7 +5,7 @@
 /*
  * Fundo/superfícies/texto (ink-*) são preto e branco neutros de verdade,
  * invertendo com o tema. O acento de detalhe (--tenant-primary: botões,
- * links, destaque de navegação) continua azul nos dois temas.
+ * links, destaque de navegação) continua verde (#10B981) nos dois temas.
  *
  * Os valores são "R G B" (sem vírgula, sem função) — não hex nem var()
  * direto — porque é o único formato que permite ao Tailwind aplicar
@@ -14,9 +14,9 @@
  * nenhum componente precisa saber qual tema está ativo.
  */
 :root {
-  --tenant-primary: 37 99 235;
-  --tenant-primary-hover: 59 130 246;
-  --tenant-primary-soft: 37 99 235;
+  --tenant-primary: 16 185 129;
+  --tenant-primary-hover: 52 211 153;
+  --tenant-primary-soft: 16 185 129;
   --tenant-primary-foreground: 255 255 255;
 
   /* Preto neutro de verdade — sem tingimento azul/roxo no cinza. */
@@ -32,9 +32,9 @@
 }
 
 :root[data-theme='light'] {
-  --tenant-primary: 37 99 235;
-  --tenant-primary-hover: 29 78 216;
-  --tenant-primary-soft: 37 99 235;
+  --tenant-primary: 16 185 129;
+  --tenant-primary-hover: 5 150 105;
+  --tenant-primary-soft: 16 185 129;
   --tenant-primary-foreground: 255 255 255;
 
   /* Branco neutro de verdade. */

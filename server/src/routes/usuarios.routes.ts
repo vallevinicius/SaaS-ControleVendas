@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { verificarLimiteRecurso } from '../middleware/plano.js';
 
 export const usuariosRouter = Router();
 usuariosRouter.use(requireAuth);
@@ -62,6 +63,11 @@ usuariosRouter.post('/', async (req, res) => {
   const existente = await prisma.usuario.findUnique({ where: { email: parse.data.email } });
   if (existente) {
     return res.status(409).json({ erro: 'Já existe uma conta com este e-mail.' });
+  }
+
+  const limiteExcedido = await verificarLimiteRecurso(tenantId, 'usuarios');
+  if (limiteExcedido) {
+    return res.status(403).json(limiteExcedido);
   }
 
   const senhaHash = await bcrypt.hash(parse.data.senha, 10);

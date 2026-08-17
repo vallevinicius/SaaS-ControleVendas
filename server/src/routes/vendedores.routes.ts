@@ -1,22 +1,16 @@
-import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireFeaturePlano } from '../middleware/plano.js';
+import { requireContaPrincipal } from '../middleware/contaPrincipal.js';
 
 export const vendedoresRouter = Router();
-vendedoresRouter.use(requireAuth);
+vendedoresRouter.use(requireAuth, requireFeaturePlano('vendedores'));
 
 // Gerenciar vendedores (criar/editar/desativar) é restrito à conta principal
 // da loja — outros logins (mesmo ADMIN) só podem listar, pra escolher o
 // vendedor na hora de vender no PDV.
-async function requireContaPrincipal(req: Request, res: Response, next: NextFunction) {
-  const usuario = await prisma.usuario.findUnique({ where: { id: req.usuario!.id }, select: { raiz: true } });
-  if (!usuario?.raiz) {
-    return res.status(403).json({ erro: 'Só a conta principal da loja pode gerenciar vendedores.' });
-  }
-  next();
-}
 
 function serializarVendedor(v: {
   id: string;
