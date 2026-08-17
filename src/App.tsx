@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { TenantProvider, useTenant } from '@/contexts/TenantContext';
-import { AdminAuthProvider, useAdminAuth } from '@/contexts/AdminAuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { ConfirmProvider } from '@/contexts/ConfirmContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
@@ -16,8 +15,6 @@ import { FinanceiroScreen } from '@/components/Financeiro/FinanceiroScreen';
 import { UsuariosScreen } from '@/components/Usuarios/UsuariosScreen';
 import { LoginScreen } from '@/components/Auth/LoginScreen';
 import { RegisterScreen } from '@/components/Auth/RegisterScreen';
-import { AdminLoginScreen } from '@/components/Admin/AdminLoginScreen';
-import { AdminDashboard } from '@/components/Admin/AdminDashboard';
 import { podeVerTela } from '@/utils/permissoes';
 import { planoPermiteTela } from '@/utils/planos';
 import type { TelaComPermissao } from '@/types';
@@ -47,22 +44,6 @@ function RotaPublica({ children }: { children: ReactNode }) {
   const { autenticado, carregando } = useTenant();
   if (carregando) return <TelaCarregando />;
   if (autenticado) return <Navigate to="/" replace />;
-  return <>{children}</>;
-}
-
-/** Rotas do painel interno da Total Software — sessão via AdminAuthContext,
- * totalmente independente da sessão de loja acima. */
-function RotaAdminProtegida({ children }: { children: ReactNode }) {
-  const { autenticado, carregando } = useAdminAuth();
-  if (carregando) return <TelaCarregando />;
-  if (!autenticado) return <Navigate to="/admin/login" replace />;
-  return <>{children}</>;
-}
-
-function RotaAdminPublica({ children }: { children: ReactNode }) {
-  const { autenticado, carregando } = useAdminAuth();
-  if (carregando) return <TelaCarregando />;
-  if (autenticado) return <Navigate to="/admin" replace />;
   return <>{children}</>;
 }
 
@@ -150,25 +131,6 @@ function Roteador() {
         }
       />
 
-      {/* Painel interno da Total Software — não linkado em nenhum menu da
-          loja, acesso só por URL direta. */}
-      <Route
-        path="/admin/login"
-        element={
-          <RotaAdminPublica>
-            <AdminLoginScreen />
-          </RotaAdminPublica>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <RotaAdminProtegida>
-            <AdminDashboard />
-          </RotaAdminProtegida>
-        }
-      />
-
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -180,11 +142,9 @@ export default function App() {
       <ToastProvider>
         <ConfirmProvider>
           <TenantProvider>
-            <AdminAuthProvider>
-              <BrowserRouter>
-                <Roteador />
-              </BrowserRouter>
-            </AdminAuthProvider>
+            <BrowserRouter>
+              <Roteador />
+            </BrowserRouter>
           </TenantProvider>
         </ConfirmProvider>
       </ToastProvider>

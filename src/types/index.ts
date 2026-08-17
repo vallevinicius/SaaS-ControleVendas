@@ -290,40 +290,6 @@ export interface ResumoFinanceiro {
   saldo: number;
 }
 
-/** Usuário/login de uma loja, na visão do painel admin da plataforma. */
-export interface UsuarioAdmin {
-  id: string;
-  nome: string;
-  email: string;
-  papel: 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
-  ativo: boolean;
-  criadoEm: string;
-}
-
-/** Loja, na visão do painel admin da plataforma — sempre dentro de uma EmpresaAdmin. */
-export interface LojaAdmin {
-  id: string;
-  nomeFantasia: string;
-  razaoSocial?: string;
-  cnpj: string;
-  telefone?: string;
-  email?: string;
-  criadoEm: string;
-  usuarios: UsuarioAdmin[];
-}
-
-/** Empresa (a conta que assina o plano), na visão do painel admin da
- * plataforma — pode ter uma ou mais lojas (múltiplas só no plano ENTERPRISE). */
-export interface EmpresaAdmin {
-  id: string;
-  nome: string;
-  planoAtual: PlanoSaaS;
-  trialExpiraEm?: string;
-  ativo: boolean;
-  criadoEm: string;
-  lojas: LojaAdmin[];
-}
-
 /** Loja que o usuário logado pode acessar — a de origem ou concedida via
  * AcessoLoja (dono de conta ENTERPRISE controlando mais de uma loja). */
 export interface LojaResumo {
