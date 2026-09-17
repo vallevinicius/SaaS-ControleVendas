@@ -1,15 +1,26 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { LoadingState } from '@/components/Common/LoadingState';
+import { Paginacao } from '@/components/Common/Paginacao';
+import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
-import { getClientes, createCliente } from '@/services/apiService';
-import type { Cliente } from '@/types';
+import { getClientes, createCliente, getHistoricoCliente } from '@/services/apiService';
+import { formatarMoeda } from '@/utils/formatters';
+import type { Cliente, HistoricoCliente } from '@/types';
 
 export function ClientesScreen() {
+  const { tenant } = useTenant();
   const toast = useToast();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [termoBusca, setTermoBusca] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const [totalPaginas, setTotalPaginas] = useState(1);
+  const [totalClientes, setTotalClientes] = useState(0);
+  const [clienteHistorico, setClienteHistorico] = useState<Cliente | null>(null);
+  const [historico, setHistorico] = useState<HistoricoCliente | null>(null);
+  const [carregandoHistorico, setCarregandoHistorico] = useState(false);
 
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
@@ -19,13 +30,35 @@ export function ClientesScreen() {
 
   async function carregarClientes() {
     setCarregando(true);
-    setClientes(await getClientes());
+    const resultado = await getClientes(termoBusca, pagina);
+    setClientes(resultado.itens);
+    setTotalPaginas(resultado.totalPaginas);
+    setTotalClientes(resultado.total);
     setCarregando(false);
   }
 
   useEffect(() => {
     carregarClientes();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagina, termoBusca]);
+
+  function handleBuscar(valor: string) {
+    setTermoBusca(valor);
+    setPagina(1);
+  }
+
+  async function abrirHistorico(cliente: Cliente) {
+    setClienteHistorico(cliente);
+    setCarregandoHistorico(true);
+    try {
+      setHistorico(await getHistoricoCliente(cliente.id));
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Erro ao carregar histórico.');
+      setClienteHistorico(null);
+    } finally {
+      setCarregandoHistorico(false);
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -49,7 +82,13 @@ export function ClientesScreen() {
 
   return (
     <AppLayout titulo="Clientes" subtitulo="Cadastro de clientes para vincular às vendas">
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <input
+          value={termoBusca}
+          onChange={(e) => handleBuscar(e.target.value)}
+          placeholder="Buscar por nome, telefone ou CPF/CNPJ…"
+          className="w-full max-w-xs rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-tenant focus:outline-none"
+        />
         <button
           onClick={() => setMostrarFormulario((atual) => !atual)}
           className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
@@ -115,7 +154,9 @@ export function ClientesScreen() {
         <LoadingState mensagem="Carregando clientes…" />
       ) : clientes.length === 0 ? (
         <div className="rounded-xl border border-dashed border-ink-700 p-10 text-center">
-          <p className="text-sm text-ink-400">Nenhum cliente cadastrado ainda.</p>
+          <p className="text-sm text-ink-400">
+            {termoBusca ? 'Nenhum cliente encontrado.' : 'Nenhum cliente cadastrado ainda.'}
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-ink-700">
@@ -126,6 +167,7 @@ export function ClientesScreen() {
                 <th className="px-5 py-3 font-medium">Telefone</th>
                 <th className="px-5 py-3 font-medium">E-mail</th>
                 <th className="px-5 py-3 font-medium">CPF/CNPJ</th>
+                <th className="px-5 py-3 font-medium text-right">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-700 bg-ink-800/40">
@@ -135,10 +177,73 @@ export function ClientesScreen() {
                   <td className="px-5 py-3.5 text-ink-300">{cliente.telefone ?? '—'}</td>
                   <td className="px-5 py-3.5 text-ink-300">{cliente.email ?? '—'}</td>
                   <td className="px-5 py-3.5 font-mono text-xs text-ink-400">{cliente.cpfCnpj ?? '—'}</td>
+                  <td className="px-5 py-3.5 text-right">
+                    <button
+                      onClick={() => abrirHistorico(cliente)}
+                      className="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 hover:border-tenant hover:text-tenant"
+                    >
+                      Histórico
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      <Paginacao pagina={pagina} totalPaginas={totalPaginas} total={totalClientes} aoMudarPagina={setPagina} />
+
+      {clienteHistorico && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" role="dialog" aria-modal="true">
+          <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl border border-ink-700 bg-ink-800 p-6">
+            <p className="font-display text-lg font-semibold text-ink-100">Histórico de {clienteHistorico.nome}</p>
+
+            {carregandoHistorico ? (
+              <LoadingState mensagem="Carregando…" />
+            ) : historico && historico.vendas.length === 0 ? (
+              <p className="mt-4 text-sm text-ink-400">Esse cliente ainda não fez nenhuma compra.</p>
+            ) : (
+              historico && (
+                <>
+                  <div className="mt-3 flex gap-6 text-sm">
+                    <p className="text-ink-300">
+                      Total gasto: <span className="font-semibold text-tenant">{formatarMoeda(historico.totalGasto, tenant)}</span>
+                    </p>
+                    <p className="text-ink-300">
+                      Compras: <span className="font-semibold text-ink-100">{historico.quantidadeCompras}</span>
+                    </p>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {historico.vendas.map((venda) => (
+                      <div key={venda.id} className="rounded-lg border border-ink-700 p-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-ink-400">{new Date(venda.timestamp).toLocaleString('pt-BR')}</span>
+                          <span className="font-semibold text-ink-100">{formatarMoeda(venda.valorTotal, tenant)}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-ink-500">
+                          {venda.itens.map((i) => `${i.quantidade}x ${i.nome}`).join(', ')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => {
+                  setClienteHistorico(null);
+                  setHistorico(null);
+                }}
+                className="rounded-lg px-4 py-2 text-sm text-ink-300 hover:text-ink-100"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </AppLayout>

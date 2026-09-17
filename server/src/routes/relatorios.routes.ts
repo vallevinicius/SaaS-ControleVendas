@@ -6,6 +6,55 @@ import { requireFeaturePlano } from '../middleware/plano.js';
 export const relatoriosRouter = Router();
 relatoriosRouter.use(requireAuth, requireFeaturePlano('relatorios'));
 
+/** Consolidado somando o faturamento de todas as lojas da empresa — só
+ * ENTERPRISE (mesma feature que libera multi-loja). */
+relatoriosRouter.get('/consolidado', requireFeaturePlano('multiLoja'), async (req, res) => {
+  const { tenantId } = req.usuario!;
+  const inicio = typeof req.query.inicio === 'string' ? new Date(req.query.inicio) : null;
+  const fim = typeof req.query.fim === 'string' ? new Date(req.query.fim) : null;
+  if (fim) fim.setUTCHours(23, 59, 59, 999);
+
+  const tenantAtual = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenantAtual) return res.status(404).json({ erro: 'Loja não encontrada.' });
+
+  const lojas = await prisma.tenant.findMany({
+    where: { empresaId: tenantAtual.empresaId },
+    orderBy: { nomeFantasia: 'asc' },
+  });
+
+  const vendas = await prisma.transacao.findMany({
+    where: {
+      tenantId: { in: lojas.map((l) => l.id) },
+      tipo: 'SAIDA',
+      timestamp: { gte: inicio ?? undefined, lte: fim ?? undefined },
+    },
+  });
+
+  const porLoja = new Map<string, { faturamento: number; quantidadeVendas: number }>();
+  for (const loja of lojas) porLoja.set(loja.id, { faturamento: 0, quantidadeVendas: 0 });
+  for (const v of vendas) {
+    const atual = porLoja.get(v.tenantId)!;
+    atual.faturamento += Number(v.valorTotal);
+    atual.quantidadeVendas += 1;
+  }
+
+  const lojasResumo = lojas.map((l) => {
+    const dados = porLoja.get(l.id)!;
+    return {
+      tenantId: l.id,
+      nomeFantasia: l.nomeFantasia,
+      faturamento: Number(dados.faturamento.toFixed(2)),
+      quantidadeVendas: dados.quantidadeVendas,
+    };
+  });
+
+  res.json({
+    faturamentoTotal: Number(lojasResumo.reduce((acc, l) => acc + l.faturamento, 0).toFixed(2)),
+    quantidadeVendasTotal: lojasResumo.reduce((acc, l) => acc + l.quantidadeVendas, 0),
+    lojas: lojasResumo,
+  });
+});
+
 relatoriosRouter.get('/vendas', async (req, res) => {
   const { tenantId } = req.usuario!;
 

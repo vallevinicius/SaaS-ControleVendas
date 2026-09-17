@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
+
+const JANELA_DESFAZER_MS = 5 * 60 * 1000;
 
 export const vendasRouter = Router();
 vendasRouter.use(requireAuth);
@@ -168,4 +171,44 @@ vendasRouter.post('/', async (req, res) => {
   } catch (e) {
     res.status(400).json({ erro: e instanceof Error ? e.message : 'Erro ao registrar venda.' });
   }
+});
+
+/** Desfaz a última venda do turno de caixa aberto — devolve o estoque e
+ * apaga a transação. Só nos primeiros minutos depois da venda, pra corrigir
+ * erro de digitação sem virar uma forma de apagar vendas antigas escondido
+ * (a ação em si fica registrada na auditoria de qualquer forma). */
+vendasRouter.post('/ultima/desfazer', async (req, res) => {
+  const { tenantId, id: usuarioId } = req.usuario!;
+
+  const caixaAberto = await prisma.caixa.findFirst({ where: { tenantId, status: 'ABERTO' } });
+  if (!caixaAberto) return res.status(400).json({ erro: 'Nenhum caixa aberto.' });
+
+  const ultimaVenda = await prisma.transacao.findFirst({
+    where: { tenantId, tipo: 'SAIDA', caixaId: caixaAberto.id },
+    orderBy: { timestamp: 'desc' },
+    include: { itens: true },
+  });
+  if (!ultimaVenda) return res.status(404).json({ erro: 'Nenhuma venda pra desfazer neste turno.' });
+
+  if (Date.now() - ultimaVenda.timestamp.getTime() > JANELA_DESFAZER_MS) {
+    return res.status(400).json({ erro: 'Só dá pra desfazer uma venda até 5 minutos depois dela.' });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const item of ultimaVenda.itens) {
+      await tx.produto.update({
+        where: { id: item.productId },
+        data: { quantidadeEmEstoque: { increment: item.quantidade } },
+      });
+    }
+    await tx.transacao.delete({ where: { id: ultimaVenda.id } });
+  });
+
+  await registrarAuditoria(
+    tenantId,
+    usuarioId,
+    'venda.desfazer',
+    `Venda de R$ ${Number(ultimaVenda.valorTotal).toFixed(2)}`,
+  );
+  res.status(204).send();
 });

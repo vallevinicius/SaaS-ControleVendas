@@ -91,6 +91,7 @@ model Tenant {
   caixas                Caixa[]
   vendedores            Vendedor[]
   acessosExtras         AcessoLoja[]
+  registrosAuditoria    RegistroAuditoria[]
 
   @@index([empresaId])
 }
@@ -134,6 +135,7 @@ model Usuario {
   caixasAbertos          Caixa[]                @relation("CaixaAbertoPor")
   caixasFechados         Caixa[]                @relation("CaixaFechadoPor")
   acessosExtras          AcessoLoja[]
+  registrosAuditoria     RegistroAuditoria[]
 
   @@index([tenantId])
 }
@@ -294,6 +296,26 @@ model Caixa {
   vendas     Transacao[]
 
   @@index([tenantId, status])
+}
+
+/// Trilha de auditoria: ações sensíveis feitas por um login da loja (excluir
+/// produto, desativar usuário, excluir lançamento financeiro etc.), pro dono
+/// conseguir ver "quem fez o quê" sem precisar estar na loja o dia todo.
+/// `usuarioNome` é uma cópia (snapshot) do nome no momento da ação — o
+/// registro sobrevive mesmo se o usuário for excluído depois.
+model RegistroAuditoria {
+  id          String   @id @default(uuid())
+  tenantId    String
+  usuarioId   String?
+  usuarioNome String
+  acao        String
+  detalhe     String?  @db.Text
+  criadoEm    DateTime @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, criadoEm])
 }
 
 /// Conta interna da Total Software (dona do SaaS) — não pertence a nenhum

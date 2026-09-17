@@ -13,8 +13,12 @@ import { VendedoresScreen } from '@/components/Vendedores/VendedoresScreen';
 import { RelatoriosScreen } from '@/components/Relatorios/RelatoriosScreen';
 import { FinanceiroScreen } from '@/components/Financeiro/FinanceiroScreen';
 import { UsuariosScreen } from '@/components/Usuarios/UsuariosScreen';
+import { MeuPlanoScreen } from '@/components/Conta/MeuPlanoScreen';
+import { AuditoriaScreen } from '@/components/Conta/AuditoriaScreen';
 import { LoginScreen } from '@/components/Auth/LoginScreen';
 import { RegisterScreen } from '@/components/Auth/RegisterScreen';
+import { AdminScreen } from '@/components/Admin/AdminScreen';
+import { LandingPage } from '@/components/Marketing/LandingPage';
 import { podeVerTela } from '@/utils/permissoes';
 import { planoPermiteTela } from '@/utils/planos';
 import type { TelaComPermissao } from '@/types';
@@ -31,10 +35,20 @@ function TelaCarregando() {
  * informado, também exige que o usuário logado tenha permissão pra ela
  * (ADMIN sempre tem; usuários sem permissoes.length também têm, pra não
  * bloquear contas de antes desse recurso existir). */
-function RotaProtegida({ children, tela }: { children: ReactNode; tela?: TelaComPermissao }) {
+function RotaProtegida({
+  children,
+  tela,
+  fallbackPublico,
+}: {
+  children: ReactNode;
+  tela?: TelaComPermissao;
+  /** Renderizado no lugar do redirect pra /login quando não autenticado —
+   * usado só na rota "/" pra mostrar a landing page em vez de forçar login. */
+  fallbackPublico?: ReactNode;
+}) {
   const { autenticado, carregando, usuarioAtual, tenant } = useTenant();
   if (carregando) return <TelaCarregando />;
-  if (!autenticado) return <Navigate to="/login" replace />;
+  if (!autenticado) return fallbackPublico ? <>{fallbackPublico}</> : <Navigate to="/login" replace />;
   if (tela && !podeVerTela(usuarioAtual, tela)) return <Navigate to="/" replace />;
   if (tela && tenant && !planoPermiteTela(tenant.planoAtual, tela)) return <Navigate to="/" replace />;
   return <>{children}</>;
@@ -69,7 +83,7 @@ function Roteador() {
       <Route
         path="/"
         element={
-          <RotaProtegida tela="dashboard">
+          <RotaProtegida tela="dashboard" fallbackPublico={<LandingPage />}>
             <DashboardScreen />
           </RotaProtegida>
         }
@@ -130,6 +144,24 @@ function Roteador() {
           </RotaProtegida>
         }
       />
+      <Route
+        path="/plano"
+        element={
+          <RotaProtegida>
+            <MeuPlanoScreen />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/auditoria"
+        element={
+          <RotaProtegida>
+            <AuditoriaScreen />
+          </RotaProtegida>
+        }
+      />
+
+      <Route path="/admin" element={<AdminScreen />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

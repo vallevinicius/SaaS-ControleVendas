@@ -2,15 +2,21 @@ import type {
   Caixa,
   Categoria,
   Cliente,
+  HistoricoCliente,
   LancamentoFinanceiro,
   Produto,
+  ProdutoParaImportar,
+  RegistroAuditoria,
+  RelatorioConsolidado,
   RelatorioVendas,
   ResumoDashboard,
   ResumoFinanceiro,
+  SugestaoReposicao,
   Tenant,
   Transacao,
   TelaComPermissao,
   LojaResumo,
+  PaginaResultado,
   TipoLancamentoFinanceiro,
   Usuario,
   Vendedor,
@@ -33,7 +39,7 @@ import type {
  * ============================================================================
  */
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
+const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 const CHAVE_TOKEN = 'total_control_token';
 
 export function getToken(): string | null {
@@ -48,7 +54,7 @@ export function limparToken(): void {
   localStorage.removeItem(CHAVE_TOKEN);
 }
 
-class ErroApi extends Error {
+export class ErroApi extends Error {
   constructor(
     message: string,
     public status: number,
@@ -121,6 +127,45 @@ export function logout(): void {
   limparToken();
 }
 
+// ----------------------------------------------------------------------------
+// ADMIN DA PLATAFORMA (Total Software)
+// ----------------------------------------------------------------------------
+// Sessão separada da loja — chave própria no localStorage. A gestão de
+// empresas/lojas em si acontece no TotalControl (totalSoftwareAdmin); aqui só
+// autentica pra decidir se manda o usuário pra lá (ver AdminScreen.tsx).
+
+const CHAVE_TOKEN_ADMIN = 'total_control_admin_token';
+
+export function getAdminToken(): string | null {
+  return localStorage.getItem(CHAVE_TOKEN_ADMIN);
+}
+
+export function limparTokenAdmin(): void {
+  localStorage.removeItem(CHAVE_TOKEN_ADMIN);
+}
+
+export async function loginAdmin(email: string, senha: string): Promise<void> {
+  const resposta = await fetch(`${API_URL}/admin/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, senha }),
+  });
+
+  if (!resposta.ok) {
+    let mensagem = 'E-mail ou senha inválidos.';
+    try {
+      const corpo = await resposta.json();
+      if (corpo?.erro) mensagem = corpo.erro;
+    } catch {
+      // corpo sem JSON — mantém mensagem genérica
+    }
+    throw new ErroApi(mensagem, resposta.status);
+  }
+
+  const { token } = await resposta.json();
+  localStorage.setItem(CHAVE_TOKEN_ADMIN, token);
+}
+
 /** Reemite o token pra outra loja que o usuário tem acesso (ver `lojas` em getMe). */
 export async function trocarLoja(tenantId: string): Promise<void> {
   const { token } = await requisitar<{ token: string }>('/auth/trocar-loja', {
@@ -144,12 +189,22 @@ export async function criarLoja(dados: NovaLojaPayload): Promise<{ id: string; n
 // PRODUTOS
 // ----------------------------------------------------------------------------
 
-export async function getProducts(): Promise<Produto[]> {
-  return requisitar('/produtos');
+export interface RespostaProdutos extends PaginaResultado<Produto> {
+  produtosComEstoqueBaixo: number;
 }
 
-export async function searchProducts(termo: string): Promise<Produto[]> {
-  return requisitar(`/produtos?q=${encodeURIComponent(termo)}`);
+/** Busca produtos com paginação; `termo` vazio traz a lista inteira (usado
+ * tanto pela tela de Estoque quanto pela busca ao vivo do PDV). */
+export async function searchProducts(termo: string, pagina = 1, tamanho = 20): Promise<RespostaProdutos> {
+  return requisitar(`/produtos?q=${encodeURIComponent(termo)}&pagina=${pagina}&tamanho=${tamanho}`);
+}
+
+export async function getSugestaoReposicao(): Promise<SugestaoReposicao[]> {
+  return requisitar('/produtos/sugestao-reposicao');
+}
+
+export async function importarProdutos(produtos: ProdutoParaImportar[]): Promise<{ criados: number }> {
+  return requisitar('/produtos/importar', { method: 'POST', body: JSON.stringify({ produtos }) });
 }
 
 export interface NovoProdutoPayload {
@@ -194,9 +249,12 @@ export async function createCategoria(
 // CLIENTES
 // ----------------------------------------------------------------------------
 
-export async function getClientes(termo?: string): Promise<Cliente[]> {
-  const query = termo ? `?q=${encodeURIComponent(termo)}` : '';
-  return requisitar(`/clientes${query}`);
+export async function getClientes(termo?: string, pagina = 1, tamanho = 20): Promise<PaginaResultado<Cliente>> {
+  const params = new URLSearchParams();
+  if (termo) params.set('q', termo);
+  params.set('pagina', String(pagina));
+  params.set('tamanho', String(tamanho));
+  return requisitar(`/clientes?${params.toString()}`);
 }
 
 export interface NovoClientePayload {
@@ -208,6 +266,10 @@ export interface NovoClientePayload {
 
 export async function createCliente(dados: NovoClientePayload): Promise<Cliente> {
   return requisitar('/clientes', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function getHistoricoCliente(id: string): Promise<HistoricoCliente> {
+  return requisitar(`/clientes/${id}/historico`);
 }
 
 // ----------------------------------------------------------------------------
@@ -230,6 +292,11 @@ export async function registerSale(payload: NovaVendaPayload): Promise<Transacao
 
 export async function getVendas(): Promise<Transacao[]> {
   return requisitar('/vendas');
+}
+
+/** Desfaz a última venda do turno de caixa aberto (até 5 min depois dela). */
+export async function desfazerUltimaVenda(): Promise<void> {
+  await requisitar('/vendas/ultima/desfazer', { method: 'POST' });
 }
 
 // ----------------------------------------------------------------------------
@@ -261,6 +328,14 @@ export async function getRelatorioVendas(inicio?: string, fim?: string): Promise
   if (fim) parametros.set('fim', fim);
   const query = parametros.toString() ? `?${parametros.toString()}` : '';
   return requisitar(`/relatorios/vendas${query}`);
+}
+
+export async function getRelatorioConsolidado(inicio?: string, fim?: string): Promise<RelatorioConsolidado> {
+  const parametros = new URLSearchParams();
+  if (inicio) parametros.set('inicio', inicio);
+  if (fim) parametros.set('fim', fim);
+  const query = parametros.toString() ? `?${parametros.toString()}` : '';
+  return requisitar(`/relatorios/consolidado${query}`);
 }
 
 // ----------------------------------------------------------------------------
@@ -377,4 +452,36 @@ export async function updateVendedor(
   dados: Partial<NovoVendedorPayload> & { ativo?: boolean },
 ): Promise<Vendedor> {
   return requisitar(`/vendedores/${id}`, { method: 'PUT', body: JSON.stringify(dados) });
+}
+
+// ----------------------------------------------------------------------------
+// AUDITORIA (trilha de "quem fez o quê" — só a conta principal vê)
+// ----------------------------------------------------------------------------
+
+export async function getAuditoria(pagina = 1, tamanho = 20): Promise<PaginaResultado<RegistroAuditoria>> {
+  return requisitar(`/auditoria?pagina=${pagina}&tamanho=${tamanho}`);
+}
+
+// ----------------------------------------------------------------------------
+// LOJAS (multi-loja — só ENTERPRISE)
+// ----------------------------------------------------------------------------
+
+export async function concederAcessoLoja(tenantId: string, usuarioId: string): Promise<void> {
+  await requisitar(`/lojas/${tenantId}/acessos`, { method: 'POST', body: JSON.stringify({ usuarioId }) });
+}
+
+// ----------------------------------------------------------------------------
+// APARÊNCIA DA LOJA
+// ----------------------------------------------------------------------------
+
+export interface AparenciaPayload {
+  corPrincipalDoTema: string;
+  corPrincipalHover?: string;
+  logoDaLojaUrl?: string;
+}
+
+export async function atualizarAparencia(
+  payload: AparenciaPayload,
+): Promise<{ logoDaLojaUrl: string; corPrincipalDoTema: string; corPrincipalHover?: string }> {
+  return requisitar('/tenant/aparencia', { method: 'PUT', body: JSON.stringify(payload) });
 }

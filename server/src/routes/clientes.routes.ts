@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { lerPaginacao, montarResposta } from '../lib/paginacao.js';
 
 export const clientesRouter = Router();
 clientesRouter.use(requireAuth);
@@ -28,12 +29,27 @@ function serializarCliente(c: {
 
 clientesRouter.get('/', async (req, res) => {
   const { tenantId } = req.usuario!;
-  const termo = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+  const termo = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const { pagina, tamanho } = lerPaginacao(req.query);
 
-  const clientes = await prisma.cliente.findMany({ where: { tenantId }, orderBy: { nome: 'asc' } });
-  const filtrados = termo ? clientes.filter((c) => c.nome.toLowerCase().includes(termo)) : clientes;
+  const where = {
+    tenantId,
+    ...(termo
+      ? { OR: [{ nome: { contains: termo } }, { telefone: { contains: termo } }, { cpfCnpj: { contains: termo } }] }
+      : {}),
+  };
 
-  res.json(filtrados.map(serializarCliente));
+  const [clientes, total] = await Promise.all([
+    prisma.cliente.findMany({
+      where,
+      orderBy: { nome: 'asc' },
+      skip: (pagina - 1) * tamanho,
+      take: tamanho,
+    }),
+    prisma.cliente.count({ where }),
+  ]);
+
+  res.json(montarResposta(clientes.map(serializarCliente), total, pagina, tamanho));
 });
 
 const clienteSchema = z.object({
@@ -71,6 +87,33 @@ clientesRouter.put('/:id', async (req, res) => {
     data: { ...parse.data, email: parse.data.email || undefined },
   });
   res.json(serializarCliente(atualizado));
+});
+
+/** Histórico de compras do cliente — últimas 50 vendas, mais recente primeiro. */
+clientesRouter.get('/:id/historico', async (req, res) => {
+  const { tenantId } = req.usuario!;
+  const cliente = await prisma.cliente.findFirst({ where: { id: req.params.id, tenantId } });
+  if (!cliente) return res.status(404).json({ erro: 'Cliente não encontrado.' });
+
+  const vendas = await prisma.transacao.findMany({
+    where: { tenantId, clienteId: cliente.id, tipo: 'SAIDA' },
+    include: { itens: true },
+    orderBy: { timestamp: 'desc' },
+    take: 50,
+  });
+
+  res.json({
+    totalGasto: Number(vendas.reduce((acc, v) => acc + Number(v.valorTotal), 0).toFixed(2)),
+    quantidadeCompras: vendas.length,
+    vendas: vendas.map((v) => ({
+      id: v.id,
+      timestamp: v.timestamp.toISOString(),
+      valorTotal: Number(v.valorTotal),
+      formaPagamento: v.formaPagamento ?? undefined,
+      quantidadeItens: v.itens.reduce((acc, i) => acc + i.quantidade, 0),
+      itens: v.itens.map((i) => ({ nome: i.nomeProdutoSnapshot, quantidade: i.quantidade, subtotal: Number(i.subtotal) })),
+    })),
+  });
 });
 
 clientesRouter.delete('/:id', async (req, res) => {

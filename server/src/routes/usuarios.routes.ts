@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { verificarLimiteRecurso } from '../middleware/plano.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const usuariosRouter = Router();
 usuariosRouter.use(requireAuth);
@@ -50,7 +51,7 @@ const novoUsuarioSchema = z.object({
 });
 
 usuariosRouter.post('/', async (req, res) => {
-  const { tenantId, papel: papelSolicitante } = req.usuario!;
+  const { tenantId, papel: papelSolicitante, id: idSolicitante } = req.usuario!;
   if (papelSolicitante !== 'ADMIN') {
     return res.status(403).json({ erro: 'Só administradores da loja podem criar novos logins.' });
   }
@@ -82,6 +83,7 @@ usuariosRouter.post('/', async (req, res) => {
     },
   });
 
+  await registrarAuditoria(tenantId, idSolicitante, 'usuario.criar', `${usuario.nome} (${usuario.email})`);
   res.status(201).json(serializarUsuario(usuario));
 });
 
@@ -111,6 +113,12 @@ usuariosRouter.put('/:id/ativo', async (req, res) => {
     where: { id: usuario.id },
     data: { ativo: parse.data.ativo },
   });
+  await registrarAuditoria(
+    tenantId,
+    idSolicitante,
+    parse.data.ativo ? 'usuario.ativar' : 'usuario.desativar',
+    usuario.nome,
+  );
   res.json(serializarUsuario(atualizado));
 });
 

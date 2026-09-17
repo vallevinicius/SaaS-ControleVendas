@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { contarProdutosComEstoqueBaixo } from '../lib/estoque.js';
 
 export const dashboardRouter = Router();
 dashboardRouter.use(requireAuth);
@@ -44,8 +45,7 @@ dashboardRouter.get('/resumo', async (req, res) => {
     .sort((a, b) => b.quantidadeVendida - a.quantidadeVendida)
     .slice(0, 5);
 
-  const produtosAtivos = await prisma.produto.findMany({ where: { tenantId, ativo: true } });
-  const produtosComEstoqueBaixo = produtosAtivos.filter((p) => p.quantidadeEmEstoque <= p.estoqueMinimo).length;
+  const produtosComEstoqueBaixo = await contarProdutosComEstoqueBaixo(tenantId);
 
   res.json({
     faturamentoDoDia,

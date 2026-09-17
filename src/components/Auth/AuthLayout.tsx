@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ThemeToggle } from '@/components/Common/ThemeToggle';
+import { LogoMark } from '@/components/Common/LogoMark';
 
 interface AuthLayoutProps {
   titulo: string;
@@ -17,9 +18,7 @@ export function AuthLayout({ titulo, subtitulo, children, rodape }: AuthLayoutPr
 
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-1 text-center">
-          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-tenant text-lg font-bold text-tenant-foreground">
-            TC
-          </div>
+          <LogoMark className="mb-2 h-11 w-11 rounded-xl" />
           <p className="font-display text-lg font-semibold tracking-tight text-ink-100">Total Control</p>
           <p className="text-xs text-ink-400">Gestão de vendas e estoque</p>
         </div>

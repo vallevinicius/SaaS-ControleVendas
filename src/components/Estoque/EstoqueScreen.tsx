@@ -2,22 +2,26 @@ import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { LoadingState } from '@/components/Common/LoadingState';
 import { EstoqueBadge } from '@/components/Common/EstoqueBadge';
+import { Paginacao } from '@/components/Common/Paginacao';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import {
-  getProducts,
+  searchProducts,
   getCategorias,
   registerStockEntry,
   createProduct,
   createCategoria,
   deactivateProduct,
+  importarProdutos,
 } from '@/services/apiService';
 import { formatarMoeda } from '@/utils/formatters';
 import { LIMITES_POR_PLANO } from '@/utils/planos';
-import type { Categoria, Produto } from '@/types';
+import type { Categoria, Produto, ProdutoParaImportar } from '@/types';
 import { EntradaEstoqueModal } from './EntradaEstoqueModal';
 import { NovoProdutoModal } from './NovoProdutoModal';
+import { SugestaoReposicaoModal } from './SugestaoReposicaoModal';
+import { ImportarProdutosModal } from './ImportarProdutosModal';
 
 export function EstoqueScreen() {
   const { tenant } = useTenant();
@@ -28,11 +32,24 @@ export function EstoqueScreen() {
   const [carregando, setCarregando] = useState(true);
   const [produtoParaEntrada, setProdutoParaEntrada] = useState<Produto | null>(null);
   const [mostrarNovoProduto, setMostrarNovoProduto] = useState(false);
+  const [mostrarSugestao, setMostrarSugestao] = useState(false);
+  const [mostrarImportar, setMostrarImportar] = useState(false);
+  const [termoBusca, setTermoBusca] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const [totalPaginas, setTotalPaginas] = useState(1);
+  const [totalProdutos, setTotalProdutos] = useState(0);
+  const [produtosComEstoqueBaixo, setProdutosComEstoqueBaixo] = useState(0);
 
   async function carregarDados() {
     setCarregando(true);
-    const [produtosCarregados, categoriasCarregadas] = await Promise.all([getProducts(), getCategorias()]);
-    setProdutos(produtosCarregados);
+    const [resultado, categoriasCarregadas] = await Promise.all([
+      searchProducts(termoBusca, pagina),
+      getCategorias(),
+    ]);
+    setProdutos(resultado.itens);
+    setTotalPaginas(resultado.totalPaginas);
+    setTotalProdutos(resultado.total);
+    setProdutosComEstoqueBaixo(resultado.produtosComEstoqueBaixo);
     setCategorias(categoriasCarregadas);
     setCarregando(false);
   }
@@ -40,7 +57,12 @@ export function EstoqueScreen() {
   useEffect(() => {
     if (tenant) carregarDados();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenant]);
+  }, [tenant, pagina, termoBusca]);
+
+  function handleBuscar(valor: string) {
+    setTermoBusca(valor);
+    setPagina(1);
+  }
 
   function nomeCategoria(categoriaId: string): string {
     return categorias.find((c) => c.id === categoriaId)?.nome ?? 'Sem categoria';
@@ -74,9 +96,30 @@ export function EstoqueScreen() {
     }
   }
 
-  const produtosComEstoqueBaixo = produtos.filter((p) => p.quantidadeEmEstoque <= p.estoqueMinimo).length;
+  async function handleRegistrarEntradaSugestao(produtoId: string, quantidade: number) {
+    try {
+      await registerStockEntry({ productId: produtoId, quantidade });
+      await carregarDados();
+      toast.sucesso(`Entrada de ${quantidade} un. registrada.`);
+      setMostrarSugestao(false);
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao registrar entrada.');
+    }
+  }
+
+  async function handleImportarProdutos(produtosParaImportar: ProdutoParaImportar[]) {
+    try {
+      const resultado = await importarProdutos(produtosParaImportar);
+      toast.sucesso(`${resultado.criados} produto(s) importado(s).`);
+      setMostrarImportar(false);
+      await carregarDados();
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao importar produtos.');
+    }
+  }
+
   const maxProdutos = tenant ? LIMITES_POR_PLANO[tenant.planoAtual].maxProdutos : null;
-  const limiteAtingido = maxProdutos !== null && produtos.length >= maxProdutos;
+  const limiteAtingido = maxProdutos !== null && totalProdutos >= maxProdutos;
 
   return (
     <AppLayout
@@ -87,27 +130,50 @@ export function EstoqueScreen() {
           : 'Todos os produtos estão em níveis saudáveis de estoque'
       }
     >
-      <div className="mb-4 flex items-center justify-end gap-3">
-        {maxProdutos !== null && (
-          <p className="text-xs text-ink-500">
-            {produtos.length}/{maxProdutos} produto(s) do plano {tenant?.planoAtual}
-          </p>
-        )}
-        <button
-          onClick={() => setMostrarNovoProduto(true)}
-          disabled={limiteAtingido}
-          title={limiteAtingido ? `Limite de produtos do plano ${tenant?.planoAtual} atingido.` : undefined}
-          className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          + Novo produto
-        </button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <input
+          value={termoBusca}
+          onChange={(e) => handleBuscar(e.target.value)}
+          placeholder="Buscar por nome ou SKU…"
+          className="w-full max-w-xs rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-tenant focus:outline-none"
+        />
+        <div className="flex items-center gap-3">
+          {maxProdutos !== null && (
+            <p className="text-xs text-ink-500">
+              {totalProdutos}/{maxProdutos} produto(s) do plano {tenant?.planoAtual}
+            </p>
+          )}
+          <button
+            onClick={() => setMostrarSugestao(true)}
+            className="rounded-lg border border-ink-600 px-3 py-2 text-sm font-medium text-ink-200 hover:border-tenant hover:text-tenant"
+          >
+            Sugestão de reposição
+          </button>
+          <button
+            onClick={() => setMostrarImportar(true)}
+            disabled={limiteAtingido}
+            className="rounded-lg border border-ink-600 px-3 py-2 text-sm font-medium text-ink-200 hover:border-tenant hover:text-tenant disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Importar CSV
+          </button>
+          <button
+            onClick={() => setMostrarNovoProduto(true)}
+            disabled={limiteAtingido}
+            title={limiteAtingido ? `Limite de produtos do plano ${tenant?.planoAtual} atingido.` : undefined}
+            className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            + Novo produto
+          </button>
+        </div>
       </div>
 
       {carregando ? (
         <LoadingState mensagem="Carregando estoque…" />
       ) : produtos.length === 0 ? (
         <div className="rounded-xl border border-dashed border-ink-700 p-10 text-center">
-          <p className="text-sm text-ink-400">Nenhum produto cadastrado ainda.</p>
+          <p className="text-sm text-ink-400">
+            {termoBusca ? 'Nenhum produto encontrado.' : 'Nenhum produto cadastrado ainda.'}
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-ink-700">
@@ -163,6 +229,8 @@ export function EstoqueScreen() {
         </div>
       )}
 
+      <Paginacao pagina={pagina} totalPaginas={totalPaginas} total={totalProdutos} aoMudarPagina={setPagina} />
+
       {produtoParaEntrada && (
         <EntradaEstoqueModal
           produto={produtoParaEntrada}
@@ -187,6 +255,17 @@ export function EstoqueScreen() {
             return categoria;
           }}
         />
+      )}
+
+      {mostrarSugestao && (
+        <SugestaoReposicaoModal
+          aoFechar={() => setMostrarSugestao(false)}
+          aoRegistrarEntrada={handleRegistrarEntradaSugestao}
+        />
+      )}
+
+      {mostrarImportar && (
+        <ImportarProdutosModal aoFechar={() => setMostrarImportar(false)} aoImportar={handleImportarProdutos} />
       )}
     </AppLayout>
   );

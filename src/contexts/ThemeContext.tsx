@@ -24,7 +24,7 @@ const CHAVE_TEMA = 'total_control_tema';
 
 function lerTemaSalvo(): Tema {
   const salvo = localStorage.getItem(CHAVE_TEMA);
-  return salvo === 'light' ? 'light' : 'dark';
+  return salvo === 'dark' ? 'dark' : 'light';
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

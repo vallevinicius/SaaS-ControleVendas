@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { LoadingState } from '@/components/Common/LoadingState';
 import { useTenant } from '@/contexts/TenantContext';
-import { getRelatorioVendas } from '@/services/apiService';
+import { getRelatorioVendas, getRelatorioConsolidado } from '@/services/apiService';
 import { formatarMoeda, formatarDataHora, formatarFormaPagamento } from '@/utils/formatters';
-import type { RelatorioVendas } from '@/types';
+import { baixarCsv } from '@/utils/csv';
+import { planoPermiteMultiLoja } from '@/utils/planos';
+import type { RelatorioConsolidado, RelatorioVendas } from '@/types';
 
 function inicioDoMesAtual(): string {
   const agora = new Date();
@@ -15,16 +17,53 @@ function hoje(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Desloca um período pra trás pela própria duração dele — usado pra
+ * comparar "esse período" com "o mesmo tanto de dias, imediatamente antes". */
+function periodoAnterior(inicio: string, fim: string): { inicio: string; fim: string } {
+  const dataInicio = new Date(inicio);
+  const dataFim = new Date(fim);
+  const duracaoDias = Math.max(1, Math.round((dataFim.getTime() - dataInicio.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+  const novoFim = new Date(dataInicio);
+  novoFim.setDate(novoFim.getDate() - 1);
+  const novoInicio = new Date(novoFim);
+  novoInicio.setDate(novoInicio.getDate() - duracaoDias + 1);
+
+  return { inicio: novoInicio.toISOString().slice(0, 10), fim: novoFim.toISOString().slice(0, 10) };
+}
+
+function variacao(atual: number, anterior: number): string {
+  if (anterior === 0) return atual > 0 ? '+100%' : '0%';
+  const percentual = Math.round(((atual - anterior) / anterior) * 100);
+  return `${percentual > 0 ? '+' : ''}${percentual}%`;
+}
+
 export function RelatoriosScreen() {
   const { tenant } = useTenant();
   const [inicio, setInicio] = useState(inicioDoMesAtual());
   const [fim, setFim] = useState(hoje());
   const [relatorio, setRelatorio] = useState<RelatorioVendas | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [comparar, setComparar] = useState(false);
+  const [relatorioAnterior, setRelatorioAnterior] = useState<RelatorioVendas | null>(null);
+  const [consolidado, setConsolidado] = useState<RelatorioConsolidado | null>(null);
 
   async function carregar() {
     setCarregando(true);
-    setRelatorio(await getRelatorioVendas(inicio, fim));
+    const atual = await getRelatorioVendas(inicio, fim);
+    setRelatorio(atual);
+
+    if (comparar) {
+      const anterior = periodoAnterior(inicio, fim);
+      setRelatorioAnterior(await getRelatorioVendas(anterior.inicio, anterior.fim));
+    } else {
+      setRelatorioAnterior(null);
+    }
+
+    if (tenant && planoPermiteMultiLoja(tenant.planoAtual)) {
+      setConsolidado(await getRelatorioConsolidado(inicio, fim));
+    }
+
     setCarregando(false);
   }
 
@@ -32,6 +71,22 @@ export function RelatoriosScreen() {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function handleExportarCsv() {
+    if (!relatorio) return;
+    baixarCsv(
+      `vendas_${inicio}_a_${fim}.csv`,
+      ['Data', 'Cliente', 'Vendedor', 'Forma de pagamento', 'Itens', 'Total'],
+      relatorio.vendas.map((v) => [
+        formatarDataHora(v.timestamp, tenant),
+        v.clienteNome ?? '',
+        v.vendedorNome ?? '',
+        formatarFormaPagamento(v.formaPagamento),
+        v.quantidadeItens,
+        v.valorTotal.toFixed(2),
+      ]),
+    );
+  }
 
   return (
     <AppLayout titulo="Relatórios" subtitulo="Vendas por período">
@@ -54,11 +109,27 @@ export function RelatoriosScreen() {
             className="mt-1 rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
           />
         </label>
+        <label className="flex items-center gap-2 pb-2.5 text-sm text-ink-300">
+          <input
+            type="checkbox"
+            checked={comparar}
+            onChange={(e) => setComparar(e.target.checked)}
+            className="accent-tenant"
+          />
+          Comparar com período anterior
+        </label>
         <button
           onClick={carregar}
           className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
         >
           Filtrar
+        </button>
+        <button
+          onClick={handleExportarCsv}
+          disabled={!relatorio || relatorio.vendas.length === 0}
+          className="rounded-lg border border-ink-600 px-4 py-2 text-sm font-semibold text-ink-200 hover:border-tenant hover:text-tenant disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Exportar CSV
         </button>
       </div>
 
@@ -72,18 +143,64 @@ export function RelatoriosScreen() {
               <p className="mt-2 font-display text-2xl font-semibold text-tenant">
                 {formatarMoeda(relatorio.faturamentoTotal, tenant)}
               </p>
+              {relatorioAnterior && (
+                <p className="mt-1 text-xs text-ink-500">
+                  {variacao(relatorio.faturamentoTotal, relatorioAnterior.faturamentoTotal)} vs. período anterior
+                </p>
+              )}
             </div>
             <div className="rounded-xl border border-ink-700 bg-ink-800 p-6">
               <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Vendas</p>
               <p className="mt-2 font-display text-2xl font-semibold text-ink-100">{relatorio.quantidadeVendas}</p>
+              {relatorioAnterior && (
+                <p className="mt-1 text-xs text-ink-500">
+                  {variacao(relatorio.quantidadeVendas, relatorioAnterior.quantidadeVendas)} vs. período anterior
+                </p>
+              )}
             </div>
             <div className="rounded-xl border border-ink-700 bg-ink-800 p-6">
               <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Ticket médio</p>
               <p className="mt-2 font-display text-2xl font-semibold text-ink-100">
                 {formatarMoeda(relatorio.ticketMedio, tenant)}
               </p>
+              {relatorioAnterior && (
+                <p className="mt-1 text-xs text-ink-500">
+                  {variacao(relatorio.ticketMedio, relatorioAnterior.ticketMedio)} vs. período anterior
+                </p>
+              )}
             </div>
           </div>
+
+          {consolidado && (
+            <div className="rounded-xl border border-ink-700 bg-ink-800 p-6">
+              <p className="mb-4 font-display text-base font-semibold text-ink-100">
+                Consolidado de todas as lojas — {formatarMoeda(consolidado.faturamentoTotal, tenant)} (
+                {consolidado.quantidadeVendasTotal} vendas)
+              </p>
+              <div className="overflow-hidden rounded-xl border border-ink-700">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-ink-900/40 text-xs uppercase tracking-wide text-ink-400">
+                    <tr>
+                      <th className="px-5 py-3 font-medium">Loja</th>
+                      <th className="px-5 py-3 font-medium text-right">Vendas</th>
+                      <th className="px-5 py-3 font-medium text-right">Faturamento</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ink-700">
+                    {consolidado.lojas.map((l) => (
+                      <tr key={l.tenantId}>
+                        <td className="px-5 py-3.5 font-medium text-ink-100">{l.nomeFantasia}</td>
+                        <td className="px-5 py-3.5 text-right text-ink-300">{l.quantidadeVendas}</td>
+                        <td className="px-5 py-3.5 text-right font-mono text-ink-100">
+                          {formatarMoeda(l.faturamento, tenant)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-6">
             <div className="rounded-xl border border-ink-700 bg-ink-800 p-6">

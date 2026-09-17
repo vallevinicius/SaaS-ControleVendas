@@ -13,6 +13,14 @@
 /** Planos disponíveis do SaaS. Controla limites/feature flags do tenant. */
 export type PlanoSaaS = 'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE';
 
+/** Envelope de resposta paginada — espelha server/src/lib/paginacao.ts. */
+export interface PaginaResultado<T> {
+  itens: T[];
+  total: number;
+  pagina: number;
+  totalPaginas: number;
+}
+
 export type FormaPagamento = 'PIX' | 'CARTAO_CREDITO' | 'CARTAO_DEBITO' | 'DINHEIRO' | 'BOLETO' | 'OUTRO';
 
 export type TipoMovimentacao = 'ENTRADA' | 'SAIDA';
@@ -295,4 +303,56 @@ export interface ResumoFinanceiro {
 export interface LojaResumo {
   id: string;
   nomeFantasia: string;
+}
+
+/** Registro da trilha de auditoria — ver RegistroAuditoria no schema. */
+export interface RegistroAuditoria {
+  id: string;
+  usuarioNome: string;
+  acao: string;
+  detalhe?: string;
+  criadoEm: string;
+}
+
+/** Sugestão de reposição de estoque pra um produto no mínimo ou abaixo. */
+export interface SugestaoReposicao {
+  id: string;
+  nome: string;
+  sku: string;
+  quantidadeEmEstoque: number;
+  estoqueMinimo: number;
+  vendidoUltimos30Dias: number;
+  quantidadeSugerida: number;
+}
+
+/** Histórico de compras de um cliente específico. */
+export interface HistoricoCliente {
+  totalGasto: number;
+  quantidadeCompras: number;
+  vendas: Array<{
+    id: string;
+    timestamp: string;
+    valorTotal: number;
+    formaPagamento?: FormaPagamento;
+    quantidadeItens: number;
+    itens: Array<{ nome: string; quantidade: number; subtotal: number }>;
+  }>;
+}
+
+/** Faturamento consolidado somando as lojas da empresa — só ENTERPRISE. */
+export interface RelatorioConsolidado {
+  faturamentoTotal: number;
+  quantidadeVendasTotal: number;
+  lojas: Array<{ tenantId: string; nomeFantasia: string; faturamento: number; quantidadeVendas: number }>;
+}
+
+/** Um produto a importar em massa (linha de uma planilha CSV). */
+export interface ProdutoParaImportar {
+  nome: string;
+  sku: string;
+  categoria: string;
+  precoCusto: number;
+  precoVenda: number;
+  quantidadeEmEstoque: number;
+  estoqueMinimo: number;
 }

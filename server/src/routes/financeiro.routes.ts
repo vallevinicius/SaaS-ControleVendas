@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireFeaturePlano } from '../middleware/plano.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const financeiroRouter = Router();
 financeiroRouter.use(requireAuth, requireFeaturePlano('financeiro'));
@@ -111,10 +112,16 @@ financeiroRouter.post('/lancamentos', async (req, res) => {
 });
 
 financeiroRouter.delete('/lancamentos/:id', async (req, res) => {
-  const { tenantId } = req.usuario!;
+  const { tenantId, id: usuarioId } = req.usuario!;
   const lancamento = await prisma.lancamentoFinanceiro.findFirst({ where: { id: req.params.id, tenantId } });
   if (!lancamento) return res.status(404).json({ erro: 'Lançamento não encontrado.' });
 
   await prisma.lancamentoFinanceiro.delete({ where: { id: lancamento.id } });
+  await registrarAuditoria(
+    tenantId,
+    usuarioId,
+    'financeiro.excluirLancamento',
+    `${lancamento.categoria} — ${Number(lancamento.valor).toFixed(2)}`,
+  );
   res.status(204).send();
 });

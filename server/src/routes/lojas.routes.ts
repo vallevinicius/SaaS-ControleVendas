@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireContaPrincipal } from '../middleware/contaPrincipal.js';
 import { requireFeaturePlano } from '../middleware/plano.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const lojasRouter = Router();
 lojasRouter.use(requireAuth, requireContaPrincipal, requireFeaturePlano('multiLoja'));
@@ -49,5 +50,47 @@ lojasRouter.post('/', async (req, res) => {
     return loja;
   });
 
+  await registrarAuditoria(lojaOrigem.id, req.usuario!.id, 'loja.criar', novaLoja.nomeFantasia);
   res.status(201).json({ id: novaLoja.id, nomeFantasia: novaLoja.nomeFantasia });
+});
+
+const concederAcessoSchema = z.object({ usuarioId: z.string().min(1) });
+
+/** Concede a um usuário de qualquer loja da mesma empresa acesso a outra
+ * loja específica (ver AcessoLoja). Só o dono (conta principal) concede. */
+lojasRouter.post('/:tenantId/acessos', async (req, res) => {
+  const parse = concederAcessoSchema.safeParse(req.body);
+  if (!parse.success) {
+    return res.status(400).json({ erro: 'Dados inválidos.' });
+  }
+
+  const lojaAtual = await prisma.tenant.findUnique({ where: { id: req.usuario!.tenantId } });
+  if (!lojaAtual) return res.status(404).json({ erro: 'Loja não encontrada.' });
+
+  const lojaAlvo = await prisma.tenant.findUnique({ where: { id: req.params.tenantId } });
+  if (!lojaAlvo || lojaAlvo.empresaId !== lojaAtual.empresaId) {
+    return res.status(404).json({ erro: 'Loja não encontrada.' });
+  }
+
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: parse.data.usuarioId },
+    include: { tenant: true },
+  });
+  if (!usuario || usuario.tenant.empresaId !== lojaAtual.empresaId) {
+    return res.status(404).json({ erro: 'Usuário não encontrado.' });
+  }
+
+  await prisma.acessoLoja.upsert({
+    where: { usuarioId_tenantId: { usuarioId: usuario.id, tenantId: lojaAlvo.id } },
+    update: {},
+    create: { usuarioId: usuario.id, tenantId: lojaAlvo.id },
+  });
+
+  await registrarAuditoria(
+    lojaAtual.id,
+    req.usuario!.id,
+    'loja.concederAcesso',
+    `${usuario.nome} → ${lojaAlvo.nomeFantasia}`,
+  );
+  res.status(201).json({ ok: true });
 });

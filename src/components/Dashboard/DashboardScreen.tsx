@@ -4,6 +4,7 @@ import { LoadingState } from '@/components/Common/LoadingState';
 import { useTenant } from '@/contexts/TenantContext';
 import { getDashboardResumo } from '@/services/apiService';
 import { formatarMoeda } from '@/utils/formatters';
+import { OnboardingChecklist } from './OnboardingChecklist';
 import type { ResumoDashboard } from '@/types';
 
 interface CartaoMetricaProps {
@@ -43,6 +44,8 @@ export function DashboardScreen() {
         <LoadingState mensagem="Calculando indicadores…" />
       ) : (
         <div className="space-y-6">
+          <OnboardingChecklist />
+
           <div className="grid grid-cols-4 gap-4">
             <CartaoMetrica rotulo="Faturamento do dia" valor={formatarMoeda(resumo.faturamentoDoDia, tenant)} destaque />
             <CartaoMetrica rotulo="Vendas do dia" valor={String(resumo.quantidadeVendasDoDia)} />

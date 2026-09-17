@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const caixaRouter = Router();
 caixaRouter.use(requireAuth);
@@ -147,6 +148,13 @@ caixaRouter.post('/:id/fechar', async (req, res) => {
     },
     include: { abertoPor: usuarioSelect, fechadoPor: usuarioSelect },
   });
+
+  await registrarAuditoria(
+    tenantId,
+    usuarioId,
+    'caixa.fechar',
+    `Total vendido: ${resumo.totalVendido.toFixed(2)} em ${resumo.quantidadeVendas} venda(s)`,
+  );
 
   res.json({ ...serializarCaixa(atualizado), resumo });
 });

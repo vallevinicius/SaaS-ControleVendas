@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { LoadingState } from '@/components/Common/LoadingState';
 import { useTenant } from '@/contexts/TenantContext';
@@ -13,6 +13,7 @@ import {
   fecharCaixa,
   getHistoricoCaixas,
   getVendasDoCaixa,
+  desfazerUltimaVenda,
 } from '@/services/apiService';
 import { formatarMoeda, formatarHora, formatarFormaPagamento } from '@/utils/formatters';
 import { AbrirCaixaCard } from './AbrirCaixaCard';
@@ -82,6 +83,8 @@ export function PDVScreen() {
 
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [vendedorId, setVendedorId] = useState<string>('');
+  const [desfazendo, setDesfazendo] = useState(false);
+  const inputBuscaRef = useRef<HTMLInputElement>(null);
 
   async function carregarVendasDoCaixa(caixaId: string) {
     setCarregandoVendas(true);
@@ -127,8 +130,8 @@ export function PDVScreen() {
       return;
     }
     let cancelado = false;
-    searchProducts(termo).then((produtos) => {
-      if (!cancelado) setResultados(produtos);
+    searchProducts(termo).then((resultado) => {
+      if (!cancelado) setResultados(resultado.itens);
     });
     return () => {
       cancelado = true;
@@ -142,8 +145,8 @@ export function PDVScreen() {
       return;
     }
     let cancelado = false;
-    getClientes(termo).then((clientes) => {
-      if (!cancelado) setResultadosClientes(clientes);
+    getClientes(termo).then((resultado) => {
+      if (!cancelado) setResultadosClientes(resultado.itens);
     });
     return () => {
       cancelado = true;
@@ -265,6 +268,47 @@ export function PDVScreen() {
     }
   }
 
+  async function handleDesfazerUltimaVenda() {
+    setDesfazendo(true);
+    try {
+      await desfazerUltimaVenda();
+      toast.sucesso('Última venda desfeita — estoque devolvido.');
+      await carregarCaixa();
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Erro ao desfazer a venda.');
+    } finally {
+      setDesfazendo(false);
+    }
+  }
+
+  // finalizarVenda lê bastante estado (carrinho, cliente, forma de
+  // pagamento...) — guardar a versão mais atual numa ref evita que o atalho
+  // de teclado abaixo dispare uma versão desatualizada da função.
+  const finalizarVendaRef = useRef(finalizarVenda);
+  useEffect(() => {
+    finalizarVendaRef.current = finalizarVenda;
+  });
+
+  // Atalhos de teclado: F2 foca a busca de produto, F4 finaliza a venda, Esc
+  // volta pra lista de vendas do turno — só ativos durante uma nova venda.
+  useEffect(() => {
+    function aoTeclar(e: KeyboardEvent) {
+      if (!mostrarNovaVenda) return;
+      if (e.key === 'F2') {
+        e.preventDefault();
+        inputBuscaRef.current?.focus();
+      } else if (e.key === 'F4') {
+        e.preventDefault();
+        finalizarVendaRef.current();
+      } else if (e.key === 'Escape') {
+        cancelarNovaVenda();
+      }
+    }
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mostrarNovaVenda]);
+
   if (carregandoCaixa) {
     return (
       <AppLayout titulo="Caixa" subtitulo="Busque um produto, monte o carrinho e finalize a venda">
@@ -317,12 +361,24 @@ export function PDVScreen() {
               <p className="text-sm font-medium text-ink-200">Vendas de hoje</p>
               <p className="text-xs text-ink-500">{vendasDoCaixa.length} venda(s) neste turno</p>
             </div>
-            <button
-              onClick={() => setMostrarNovaVenda(true)}
-              className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
-            >
-              + Nova venda
-            </button>
+            <div className="flex gap-2">
+              {vendasDoCaixa.length > 0 && (
+                <button
+                  onClick={handleDesfazerUltimaVenda}
+                  disabled={desfazendo}
+                  title="Só funciona até 5 minutos depois da venda"
+                  className="rounded-lg border border-ink-600 px-4 py-2 text-sm font-medium text-ink-200 hover:border-red-400 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {desfazendo ? 'Desfazendo…' : 'Desfazer última venda'}
+                </button>
+              )}
+              <button
+                onClick={() => setMostrarNovaVenda(true)}
+                className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90"
+              >
+                + Nova venda
+              </button>
+            </div>
           </div>
 
           {carregandoVendas ? (
@@ -376,10 +432,11 @@ export function PDVScreen() {
         <section className="flex flex-col gap-4">
           <div className="relative">
             <input
+              ref={inputBuscaRef}
               autoFocus
               value={termoBusca}
               onChange={(e) => setTermoBusca(e.target.value)}
-              placeholder="Buscar produto por nome ou SKU…"
+              placeholder="Buscar produto por nome ou SKU… (F2)"
               className="w-full rounded-xl border border-ink-600 bg-ink-800 px-4 py-3.5 text-base text-ink-100 placeholder:text-ink-400 focus:border-tenant focus:outline-none focus:ring-2 focus:ring-tenant/30"
             />
           </div>
@@ -657,7 +714,7 @@ export function PDVScreen() {
                 .filter(Boolean)
                 .join(' ')}
             >
-              {processando ? 'Finalizando…' : vendedorObrigatorioFaltando ? 'Selecione um vendedor' : 'Finalizar venda'}
+              {processando ? 'Finalizando…' : vendedorObrigatorioFaltando ? 'Selecione um vendedor' : 'Finalizar venda (F4)'}
             </span>
           </button>
         </aside>

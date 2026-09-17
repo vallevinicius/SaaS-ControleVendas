@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
+import { ErroApi, loginAdmin } from '@/services/apiService';
 import { AuthLayout } from './AuthLayout';
 
 export function LoginScreen() {
@@ -19,7 +20,21 @@ export function LoginScreen() {
       await login(email, senha);
       navigate('/', { replace: true });
     } catch (erro) {
-      toast.erro(erro instanceof Error ? erro.message : 'Erro ao entrar.');
+      // 401 = credenciais não batem com nenhuma loja — tenta como admin da
+      // plataforma antes de desistir. Outros status (ex: 403 de loja
+      // suspensa/trial expirado) já têm mensagem própria e não devem cair
+      // nessa segunda tentativa.
+      if (!(erro instanceof ErroApi) || erro.status !== 401) {
+        toast.erro(erro instanceof Error ? erro.message : 'Erro ao entrar.');
+        setEnviando(false);
+        return;
+      }
+      try {
+        await loginAdmin(email, senha);
+        navigate('/admin', { replace: true });
+      } catch {
+        toast.erro('E-mail ou senha inválidos.');
+      }
     } finally {
       setEnviando(false);
     }

@@ -4,7 +4,7 @@ import { LoadingState } from '@/components/Common/LoadingState';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { getUsuarios, createUsuario, setUsuarioAtivo, setUsuarioPermissoes } from '@/services/apiService';
+import { getUsuarios, createUsuario, setUsuarioAtivo, setUsuarioPermissoes, concederAcessoLoja } from '@/services/apiService';
 import { slugificarNomeLoja } from '@/utils/slug';
 import { TELAS_COM_PERMISSAO, PERMISSOES_PADRAO_POR_PAPEL } from '@/utils/permissoes';
 import { LIMITES_POR_PLANO } from '@/utils/planos';
@@ -62,7 +62,7 @@ function PermissoesChecklist({ papel, selecionadas, aoAlterar }: PermissoesCheck
 }
 
 export function UsuariosScreen() {
-  const { tenant, usuarioAtual } = useTenant();
+  const { tenant, usuarioAtual, lojas } = useTenant();
   const toast = useToast();
   const confirmar = useConfirm();
 
@@ -72,6 +72,8 @@ export function UsuariosScreen() {
   const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
   const [permissoesEdicao, setPermissoesEdicao] = useState<TelaComPermissao[]>([]);
   const [salvandoPermissoes, setSalvandoPermissoes] = useState(false);
+  const [usuarioParaAcesso, setUsuarioParaAcesso] = useState<Usuario | null>(null);
+  const [concedendoAcesso, setConcedendoAcesso] = useState<string | null>(null);
 
   // Domínio do e-mail de login: sempre o nome da loja — não é editável, para
   // manter todos os logins da loja com o mesmo padrão.
@@ -143,6 +145,20 @@ export function UsuariosScreen() {
       toast.sucesso(usuario.ativo ? 'Login desativado.' : 'Login reativado.');
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Erro ao atualizar login.');
+    }
+  }
+
+  async function handleConcederAcesso(tenantId: string) {
+    if (!usuarioParaAcesso) return;
+    setConcedendoAcesso(tenantId);
+    try {
+      await concederAcessoLoja(tenantId, usuarioParaAcesso.id);
+      const loja = lojas.find((l) => l.id === tenantId);
+      toast.sucesso(`${usuarioParaAcesso.nome} agora acessa "${loja?.nomeFantasia ?? 'a loja'}".`);
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Erro ao conceder acesso.');
+    } finally {
+      setConcedendoAcesso(null);
     }
   }
 
@@ -319,6 +335,14 @@ export function UsuariosScreen() {
                       >
                         Acesso
                       </button>
+                      {usuarioAtual?.raiz && lojas.length > 1 && (
+                        <button
+                          onClick={() => setUsuarioParaAcesso(usuario)}
+                          className="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-ink-200 hover:border-tenant hover:text-tenant"
+                        >
+                          Lojas
+                        </button>
+                      )}
                       <button
                         onClick={() => handleToggleAtivo(usuario)}
                         disabled={usuario.id === usuarioAtual?.id || (usuario.raiz && usuario.ativo)}
@@ -363,6 +387,44 @@ export function UsuariosScreen() {
                 className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {salvandoPermissoes ? 'Salvando…' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {usuarioParaAcesso && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-xl border border-ink-700 bg-ink-800 p-6">
+            <p className="font-display text-lg font-semibold text-ink-100">Lojas de {usuarioParaAcesso.nome}</p>
+            <p className="mt-1 text-sm text-ink-400">
+              Conceda acesso a outra loja da sua empresa — a pessoa passa a poder trocar pra ela com o mesmo login.
+            </p>
+
+            <div className="mt-4 space-y-2">
+              {lojas
+                .filter((l) => l.id !== tenant?.id)
+                .map((loja) => (
+                  <button
+                    key={loja.id}
+                    onClick={() => handleConcederAcesso(loja.id)}
+                    disabled={concedendoAcesso === loja.id}
+                    className="flex w-full items-center justify-between rounded-lg border border-ink-600 px-3 py-2.5 text-sm text-ink-200 hover:border-tenant hover:text-tenant disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {loja.nomeFantasia}
+                    <span className="text-xs text-ink-500">
+                      {concedendoAcesso === loja.id ? 'Concedendo…' : 'Conceder acesso'}
+                    </span>
+                  </button>
+                ))}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setUsuarioParaAcesso(null)}
+                className="rounded-lg px-4 py-2 text-sm text-ink-300 hover:text-ink-100"
+              >
+                Fechar
               </button>
             </div>
           </div>

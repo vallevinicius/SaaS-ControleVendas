@@ -15,6 +15,8 @@ import { caixaRouter } from './routes/caixa.routes.js';
 import { vendedoresRouter } from './routes/vendedores.routes.js';
 import { lojasRouter } from './routes/lojas.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
+import { auditoriaRouter } from './routes/auditoria.routes.js';
+import { tenantRouter } from './routes/tenant.routes.js';
 import { garantirAdminPlataforma } from './lib/adminBootstrap.js';
 
 const app = express();
@@ -37,6 +39,8 @@ app.use('/api/usuarios', usuariosRouter);
 app.use('/api/caixa', caixaRouter);
 app.use('/api/vendedores', vendedoresRouter);
 app.use('/api/lojas', lojasRouter);
+app.use('/api/auditoria', auditoriaRouter);
+app.use('/api/tenant', tenantRouter);
 app.use('/api/admin', adminRouter);
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
