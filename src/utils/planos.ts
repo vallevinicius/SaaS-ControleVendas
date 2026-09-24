@@ -49,7 +49,7 @@ export function descricaoPlano(plano: PlanoSaaS): string {
   if (features.relatorios) partes.push('Relatórios');
   if (features.vendedores) partes.push('Vendedores/comissão');
   if (features.multiLoja) partes.push('Múltiplas lojas');
-  return `${ROTULOS_PLANO[plano]} — ${partes.join(' · ')}`;
+  return `${ROTULOS_PLANO[plano]} | ${partes.join(' · ')}`;
 }
 
 export function planoPermiteMultiLoja(plano: PlanoSaaS): boolean {

@@ -8,15 +8,22 @@ import { registrarAuditoria } from '../lib/auditoria.js';
 export const tenantRouter = Router();
 tenantRouter.use(requireAuth);
 
+const corHex = /^#[0-9a-fA-F]{6}$/;
+
 const aparenciaSchema = z.object({
-  corPrincipalDoTema: z
+  corPrincipalDoTema: z.string().regex(corHex, 'Use um hex de 6 dígitos, ex: #10B981'),
+  // null = voltar a calcular o hover automaticamente a partir da cor principal.
+  corPrincipalHover: z.string().regex(corHex).nullable().optional(),
+  // Aceita tanto um link (imagem já hospedada) quanto uma imagem enviada do
+  // computador, convertida em base64 no front (data URL) — sem depender de
+  // um serviço externo de armazenamento de arquivos.
+  logoDaLojaUrl: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, 'Use um hex de 6 dígitos, ex: #10B981'),
-  corPrincipalHover: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/)
+    .max(2_000_000, 'Imagem muito grande.')
+    .refine((v) => /^https?:\/\//.test(v) || /^data:image\/(png|jpe?g|webp|gif|svg\+xml);base64,/.test(v), {
+      message: 'Logo inválida.',
+    })
     .optional(),
-  logoDaLojaUrl: z.string().url().optional(),
 });
 
 /** Personalização visual da loja (cor de destaque/logo) — só a conta
@@ -28,9 +35,10 @@ tenantRouter.put('/aparencia', requireContaPrincipal, async (req, res) => {
   }
 
   const { tenantId, id: usuarioId } = req.usuario!;
+  const { corPrincipalDoTema, corPrincipalHover, logoDaLojaUrl } = parse.data;
   const atualizado = await prisma.tenant.update({
     where: { id: tenantId },
-    data: parse.data,
+    data: { corPrincipalDoTema, corPrincipalHover, logoDaLojaUrl },
   });
 
   await registrarAuditoria(tenantId, usuarioId, 'loja.personalizarAparencia', parse.data.corPrincipalDoTema);

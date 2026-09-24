@@ -73,7 +73,7 @@ model Tenant {
   /// Meios de contato da empresa (não é o e-mail de login de nenhum usuário).
   telefone                String?
   email                   String?
-  logoDaLojaUrl           String   @db.Text
+  logoDaLojaUrl           String   @db.MediumText
   corPrincipalDoTema      String
   corPrincipalHover       String?
   fusoHorario             String   @default("America/Sao_Paulo")

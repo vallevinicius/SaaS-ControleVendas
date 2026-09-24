@@ -270,7 +270,7 @@ export function FinanceiroScreen() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-ink-100">{l.categoria}</td>
-                      <td className="px-5 py-3.5 text-ink-300">{l.descricao ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{l.descricao ?? '|'}</td>
                       <td className="px-5 py-3.5 text-right font-mono text-ink-100">{formatarMoeda(l.valor, tenant)}</td>
                       <td className="px-5 py-3.5 text-right">
                         <button onClick={() => handleExcluir(l)} className="text-xs text-ink-400 hover:text-red-400">

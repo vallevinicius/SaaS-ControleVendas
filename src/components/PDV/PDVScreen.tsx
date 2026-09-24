@@ -272,7 +272,7 @@ export function PDVScreen() {
     setDesfazendo(true);
     try {
       await desfazerUltimaVenda();
-      toast.sucesso('Última venda desfeita — estoque devolvido.');
+      toast.sucesso('Última venda desfeita | estoque devolvido.');
       await carregarCaixa();
     } catch (erro) {
       toast.erro(erro instanceof Error ? erro.message : 'Erro ao desfazer a venda.');
@@ -404,8 +404,8 @@ export function PDVScreen() {
                   {vendasDoCaixa.map((venda) => (
                     <tr key={venda.id} className="transition-colors hover:bg-ink-800">
                       <td className="px-5 py-3.5 text-ink-300">{formatarHora(venda.timestamp, tenant)}</td>
-                      <td className="px-5 py-3.5 text-ink-300">{venda.clienteNome ?? '—'}</td>
-                      <td className="px-5 py-3.5 text-ink-300">{venda.vendedorNome ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{venda.clienteNome ?? '|'}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{venda.vendedorNome ?? '|'}</td>
                       <td className="px-5 py-3.5 text-ink-300">{formatarFormaPagamento(venda.formaPagamento)}</td>
                       <td className="px-5 py-3.5 text-right text-ink-300">{venda.quantidadeItens}</td>
                       <td className="px-5 py-3.5 text-right font-mono text-ink-100">

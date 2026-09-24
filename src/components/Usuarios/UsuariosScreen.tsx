@@ -4,7 +4,7 @@ import { LoadingState } from '@/components/Common/LoadingState';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { getUsuarios, createUsuario, setUsuarioAtivo, setUsuarioPermissoes, concederAcessoLoja } from '@/services/apiService';
+import { getUsuarios, createUsuario, setUsuarioAtivo, atualizarAcessoUsuario, concederAcessoLoja } from '@/services/apiService';
 import { slugificarNomeLoja } from '@/utils/slug';
 import { TELAS_COM_PERMISSAO, PERMISSOES_PADRAO_POR_PAPEL } from '@/utils/permissoes';
 import { LIMITES_POR_PLANO } from '@/utils/planos';
@@ -70,6 +70,7 @@ export function UsuariosScreen() {
   const [carregando, setCarregando] = useState(true);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
+  const [papelEdicao, setPapelEdicao] = useState<PapelUsuario>('OPERADOR_CAIXA');
   const [permissoesEdicao, setPermissoesEdicao] = useState<TelaComPermissao[]>([]);
   const [salvandoPermissoes, setSalvandoPermissoes] = useState(false);
   const [usuarioParaAcesso, setUsuarioParaAcesso] = useState<Usuario | null>(null);
@@ -164,14 +165,23 @@ export function UsuariosScreen() {
 
   function abrirEdicaoPermissoes(usuario: Usuario) {
     setUsuarioEditando(usuario);
+    setPapelEdicao(usuario.papel);
     setPermissoesEdicao(usuario.permissoes ?? PERMISSOES_PADRAO_POR_PAPEL[usuario.papel] ?? ['dashboard']);
+  }
+
+  function handleMudarPapelEdicao(novoPapel: PapelUsuario) {
+    setPapelEdicao(novoPapel);
+    setPermissoesEdicao(PERMISSOES_PADRAO_POR_PAPEL[novoPapel] ?? ['dashboard']);
   }
 
   async function salvarPermissoesEdicao() {
     if (!usuarioEditando) return;
     setSalvandoPermissoes(true);
     try {
-      await setUsuarioPermissoes(usuarioEditando.id, permissoesEdicao);
+      await atualizarAcessoUsuario(usuarioEditando.id, {
+        papel: papelEdicao !== usuarioEditando.papel ? papelEdicao : undefined,
+        permissoes: papelEdicao === 'ADMIN' ? undefined : permissoesEdicao,
+      });
       toast.sucesso(`Acesso de "${usuarioEditando.nome}" atualizado.`);
       setUsuarioEditando(null);
       await carregarUsuarios();
@@ -256,7 +266,7 @@ export function UsuariosScreen() {
               </span>
             </div>
             <p className="mt-1 text-xs text-ink-500">
-              O domínio é fixo, sempre o nome da sua loja — só um identificador de login, não é um e-mail real.
+              O domínio é fixo, sempre o nome da sua loja | só um identificador de login, não é um e-mail real.
             </p>
           </div>
 
@@ -366,12 +376,28 @@ export function UsuariosScreen() {
             <p className="font-display text-lg font-semibold text-ink-100">Acesso de {usuarioEditando.nome}</p>
             <p className="mt-1 text-sm text-ink-400">O que essa pessoa pode ver no sistema.</p>
 
+            {usuarioAtual?.raiz && !usuarioEditando.raiz && usuarioEditando.id !== usuarioAtual?.id ? (
+              <label className="mt-4 block text-sm text-ink-300">
+                Papel
+                <select
+                  value={papelEdicao}
+                  onChange={(e) => handleMudarPapelEdicao(e.target.value as PapelUsuario)}
+                  className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
+                >
+                  <option value="OPERADOR_CAIXA">Operador de caixa</option>
+                  <option value="GERENTE">Gerente</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+              </label>
+            ) : (
+              <p className="mt-4 text-sm text-ink-300">
+                Papel: <span className="text-ink-100">{rotulosPapel[usuarioEditando.papel] ?? usuarioEditando.papel}</span>
+                {usuarioEditando.raiz && <span className="ml-1 text-xs text-ink-500">(conta principal, fixo)</span>}
+              </p>
+            )}
+
             <div className="mt-4">
-              <PermissoesChecklist
-                papel={usuarioEditando.papel}
-                selecionadas={permissoesEdicao}
-                aoAlterar={setPermissoesEdicao}
-              />
+              <PermissoesChecklist papel={papelEdicao} selecionadas={permissoesEdicao} aoAlterar={setPermissoesEdicao} />
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -383,7 +409,7 @@ export function UsuariosScreen() {
               </button>
               <button
                 onClick={salvarPermissoesEdicao}
-                disabled={salvandoPermissoes || usuarioEditando.papel === 'ADMIN'}
+                disabled={salvandoPermissoes}
                 className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {salvandoPermissoes ? 'Salvando…' : 'Salvar'}
@@ -398,7 +424,7 @@ export function UsuariosScreen() {
           <div className="w-full max-w-sm rounded-xl border border-ink-700 bg-ink-800 p-6">
             <p className="font-display text-lg font-semibold text-ink-100">Lojas de {usuarioParaAcesso.nome}</p>
             <p className="mt-1 text-sm text-ink-400">
-              Conceda acesso a outra loja da sua empresa — a pessoa passa a poder trocar pra ela com o mesmo login.
+              Conceda acesso a outra loja da sua empresa | a pessoa passa a poder trocar pra ela com o mesmo login.
             </p>
 
             <div className="mt-4 space-y-2">

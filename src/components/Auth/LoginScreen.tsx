@@ -4,13 +4,26 @@ import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
 import { ErroApi, loginAdmin } from '@/services/apiService';
 import { AuthLayout } from './AuthLayout';
+import { AuthInput } from './AuthInput';
+import { IconeEmail, IconeSenha } from './icones';
+
+const CHAVE_EMAIL_LEMBRADO = 'tc-login-email-lembrado';
+
+function lerEmailLembrado(): string {
+  try {
+    return localStorage.getItem(CHAVE_EMAIL_LEMBRADO) ?? '';
+  } catch {
+    return '';
+  }
+}
 
 export function LoginScreen() {
   const { login } = useTenant();
   const toast = useToast();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(lerEmailLembrado);
   const [senha, setSenha] = useState('');
+  const [lembrar, setLembrar] = useState(() => Boolean(lerEmailLembrado()));
   const [enviando, setEnviando] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
@@ -18,6 +31,12 @@ export function LoginScreen() {
     setEnviando(true);
     try {
       await login(email, senha);
+      try {
+        if (lembrar) localStorage.setItem(CHAVE_EMAIL_LEMBRADO, email);
+        else localStorage.removeItem(CHAVE_EMAIL_LEMBRADO);
+      } catch {
+        // Armazenamento local indisponível (modo privado, etc.) — não impede o login.
+      }
       navigate('/', { replace: true });
     } catch (erro) {
       // 401 = credenciais não batem com nenhuma loja — tenta como admin da
@@ -54,33 +73,40 @@ export function LoginScreen() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <label className="block text-sm text-ink-300">
-          E-mail
-          <input
-            type="email"
-            required
-            autoFocus
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
-          />
-        </label>
+        <AuthInput
+          label="E-mail"
+          type="email"
+          required
+          autoFocus
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          icone={<IconeEmail className="h-4 w-4" />}
+        />
 
-        <label className="block text-sm text-ink-300">
-          Senha
+        <AuthInput
+          label="Senha"
+          type="password"
+          required
+          value={senha}
+          onChange={(e) => setSenha(e.target.value)}
+          icone={<IconeSenha className="h-4 w-4" />}
+          alternarVisibilidade
+        />
+
+        <label className="flex items-center gap-2 text-sm text-ink-400">
           <input
-            type="password"
-            required
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
+            type="checkbox"
+            checked={lembrar}
+            onChange={(e) => setLembrar(e.target.checked)}
+            className="h-3.5 w-3.5 accent-tenant"
           />
+          Lembrar meu e-mail neste dispositivo
         </label>
 
         <button
           type="submit"
           disabled={enviando}
-          className="w-full rounded-lg bg-tenant py-2.5 text-sm font-semibold text-tenant-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full rounded-lg bg-tenant py-2.5 text-sm font-semibold text-tenant-foreground shadow-sm shadow-tenant/20 transition-all hover:shadow-md hover:shadow-tenant/25 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
         >
           {enviando ? 'Entrando…' : 'Entrar'}
         </button>

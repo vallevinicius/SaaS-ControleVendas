@@ -174,9 +174,9 @@ export function ClientesScreen() {
               {clientes.map((cliente) => (
                 <tr key={cliente.id} className="transition-colors hover:bg-ink-800">
                   <td className="px-5 py-3.5 font-medium text-ink-100">{cliente.nome}</td>
-                  <td className="px-5 py-3.5 text-ink-300">{cliente.telefone ?? '—'}</td>
-                  <td className="px-5 py-3.5 text-ink-300">{cliente.email ?? '—'}</td>
-                  <td className="px-5 py-3.5 font-mono text-xs text-ink-400">{cliente.cpfCnpj ?? '—'}</td>
+                  <td className="px-5 py-3.5 text-ink-300">{cliente.telefone ?? '|'}</td>
+                  <td className="px-5 py-3.5 text-ink-300">{cliente.email ?? '|'}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-ink-400">{cliente.cpfCnpj ?? '|'}</td>
                   <td className="px-5 py-3.5 text-right">
                     <button
                       onClick={() => abrirHistorico(cliente)}

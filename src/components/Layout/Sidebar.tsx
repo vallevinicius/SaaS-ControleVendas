@@ -5,7 +5,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { TELAS_COM_PERMISSAO, podeVerTela } from '@/utils/permissoes';
 import { diasRestantesTrial, planoPermiteMultiLoja, planoPermiteTela } from '@/utils/planos';
 import { mascararCnpj } from '@/utils/mascaras';
-import { criarLoja, atualizarAparencia } from '@/services/apiService';
+import { criarLoja } from '@/services/apiService';
 
 const icones: Record<string, string> = {
   dashboard: '◧',
@@ -33,9 +33,6 @@ export function Sidebar({ aberta, aoFechar }: SidebarProps) {
   const [nomeFantasiaLoja, setNomeFantasiaLoja] = useState('');
   const [cnpjLoja, setCnpjLoja] = useState('');
   const [criandoLoja, setCriandoLoja] = useState(false);
-  const [mostrarAparencia, setMostrarAparencia] = useState(false);
-  const [corEscolhida, setCorEscolhida] = useState(tenant?.configuracoes.corPrincipalDoTema ?? '#10B981');
-  const [salvandoAparencia, setSalvandoAparencia] = useState(false);
 
   const plano = tenant?.planoAtual;
   const itens = TELAS_COM_PERMISSAO.filter((tela) => podeVerTela(usuarioAtual, tela.chave)).map((tela) => ({
@@ -76,20 +73,6 @@ export function Sidebar({ aberta, aoFechar }: SidebarProps) {
       toast.erro(e instanceof Error ? e.message : 'Erro ao criar loja.');
     } finally {
       setCriandoLoja(false);
-    }
-  }
-
-  async function handleSalvarAparencia() {
-    setSalvandoAparencia(true);
-    try {
-      await atualizarAparencia({ corPrincipalDoTema: corEscolhida });
-      toast.sucesso('Cor da loja atualizada.');
-      setMostrarAparencia(false);
-      await recarregarSessao();
-    } catch (e) {
-      toast.erro(e instanceof Error ? e.message : 'Erro ao salvar a cor.');
-    } finally {
-      setSalvandoAparencia(false);
     }
   }
 
@@ -140,26 +123,13 @@ export function Sidebar({ aberta, aoFechar }: SidebarProps) {
                 {tenant?.nomeFantasia ?? 'Carregando…'}
               </p>
             )}
-            <p className="truncate text-xs text-ink-400">Plano {tenant?.planoAtual ?? '—'}</p>
+            <p className="truncate text-xs text-ink-400">Plano {tenant?.planoAtual ?? '|'}</p>
             {diasTrial !== null && (
               <p className={['truncate text-xs', diasTrial <= 3 ? 'text-amber-400' : 'text-ink-500'].join(' ')}>
                 Teste grátis: {diasTrial > 0 ? `faltam ${diasTrial} dia(s)` : 'expirado'}
               </p>
             )}
           </div>
-          {usuarioAtual?.raiz && (
-            <button
-              onClick={() => {
-                setCorEscolhida(tenant?.configuracoes.corPrincipalDoTema ?? '#10B981');
-                setMostrarAparencia(true);
-              }}
-              title="Personalizar cor da loja"
-              aria-label="Personalizar cor da loja"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-400 hover:bg-ink-700 hover:text-ink-100"
-            >
-              ⚙
-            </button>
-          )}
         </div>
 
         {podeCriarLoja && (
@@ -264,49 +234,6 @@ export function Sidebar({ aberta, aoFechar }: SidebarProps) {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        )}
-
-        {mostrarAparencia && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" role="dialog" aria-modal="true">
-            <div className="w-full max-w-sm rounded-xl border border-ink-700 bg-ink-800 p-6">
-              <p className="font-display text-lg font-semibold text-ink-100">Aparência da loja</p>
-              <p className="mt-1 text-sm text-ink-400">
-                Escolha a cor de destaque usada nos botões e links dessa loja.
-              </p>
-
-              <div className="mt-4 flex items-center gap-3">
-                <input
-                  type="color"
-                  value={corEscolhida}
-                  onChange={(e) => setCorEscolhida(e.target.value)}
-                  className="h-11 w-11 cursor-pointer rounded-lg border border-ink-600 bg-transparent"
-                />
-                <input
-                  value={corEscolhida}
-                  onChange={(e) => setCorEscolhida(e.target.value)}
-                  placeholder="#10B981"
-                  className="flex-1 rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 font-mono text-sm text-ink-100 focus:border-tenant focus:outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setMostrarAparencia(false)}
-                  className="rounded-lg px-4 py-2 text-sm text-ink-300 hover:text-ink-100"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSalvarAparencia}
-                  disabled={salvandoAparencia}
-                  className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {salvandoAparencia ? 'Salvando…' : 'Salvar'}
-                </button>
-              </div>
             </div>
           </div>
         )}

@@ -22,7 +22,9 @@ import { garantirAdminPlataforma } from './lib/adminBootstrap.js';
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+// Limite maior que o padrão (100kb) porque a logo da loja pode ser enviada
+// como imagem em base64 (data URL) direto no corpo do PUT /tenant/aparencia.
+app.use(express.json({ limit: '3mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 

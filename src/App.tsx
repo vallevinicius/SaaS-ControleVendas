@@ -19,6 +19,9 @@ import { LoginScreen } from '@/components/Auth/LoginScreen';
 import { RegisterScreen } from '@/components/Auth/RegisterScreen';
 import { AdminScreen } from '@/components/Admin/AdminScreen';
 import { LandingPage } from '@/components/Marketing/LandingPage';
+import { NotFoundScreen } from '@/components/Common/NotFoundScreen';
+import { TermosScreen } from '@/components/Legal/TermosScreen';
+import { PrivacidadeScreen } from '@/components/Legal/PrivacidadeScreen';
 import { podeVerTela } from '@/utils/permissoes';
 import { planoPermiteTela } from '@/utils/planos';
 import type { TelaComPermissao } from '@/types';
@@ -163,7 +166,10 @@ function Roteador() {
 
       <Route path="/admin" element={<AdminScreen />} />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/termos" element={<TermosScreen />} />
+      <Route path="/privacidade" element={<PrivacidadeScreen />} />
+
+      <Route path="*" element={<NotFoundScreen />} />
     </Routes>
   );
 }

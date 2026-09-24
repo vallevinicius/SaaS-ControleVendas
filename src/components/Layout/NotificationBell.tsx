@@ -47,7 +47,7 @@ export function NotificationBell() {
           if (horasAberto >= HORAS_CAIXA_ABERTO_ALERTA) {
             lista.push({
               id: 'caixa-aberto',
-              mensagem: `Caixa aberto há ${Math.floor(horasAberto)}h — não esqueça de fechar`,
+              mensagem: `Caixa aberto há ${Math.floor(horasAberto)}h | não esqueça de fechar`,
               rota: '/pdv',
               urgente: true,
             });

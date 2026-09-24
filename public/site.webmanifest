@@ -1,0 +1,21 @@
+{
+  "name": "Total Control",
+  "short_name": "Total Control",
+  "description": "PDV, estoque e financeiro pra sua loja.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#10B981",
+  "icons": [
+    {
+      "src": "/total-controle-icone-app-fundo-escuro.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/total-controle-icone-transparente.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

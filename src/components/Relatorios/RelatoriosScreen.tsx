@@ -174,7 +174,7 @@ export function RelatoriosScreen() {
           {consolidado && (
             <div className="rounded-xl border border-ink-700 bg-ink-800 p-6">
               <p className="mb-4 font-display text-base font-semibold text-ink-100">
-                Consolidado de todas as lojas — {formatarMoeda(consolidado.faturamentoTotal, tenant)} (
+                Consolidado de todas as lojas | {formatarMoeda(consolidado.faturamentoTotal, tenant)} (
                 {consolidado.quantidadeVendasTotal} vendas)
               </p>
               <div className="overflow-hidden rounded-xl border border-ink-700">
@@ -295,8 +295,8 @@ export function RelatoriosScreen() {
                   relatorio.vendas.map((venda) => (
                     <tr key={venda.id} className="transition-colors hover:bg-ink-800">
                       <td className="px-5 py-3.5 text-ink-300">{formatarDataHora(venda.timestamp, tenant)}</td>
-                      <td className="px-5 py-3.5 text-ink-300">{venda.clienteNome ?? '—'}</td>
-                      <td className="px-5 py-3.5 text-ink-300">{venda.vendedorNome ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{venda.clienteNome ?? '|'}</td>
+                      <td className="px-5 py-3.5 text-ink-300">{venda.vendedorNome ?? '|'}</td>
                       <td className="px-5 py-3.5 text-ink-300">{formatarFormaPagamento(venda.formaPagamento)}</td>
                       <td className="px-5 py-3.5 text-right text-ink-300">{venda.quantidadeItens}</td>
                       <td className="px-5 py-3.5 text-right font-mono text-ink-100">

@@ -1,0 +1,189 @@
+// ============================================================================
+// Prisma Schema - Portal de Empregos da Prefeitura de Saquarema
+// Datasource: MySQL
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS
+// ----------------------------------------------------------------------------
+
+enum UserRole {
+  CANDIDATE // Cidadão candidato a vagas
+  COMPANY   // Representante de empresa (gestor de vagas)
+  ADMIN     // Administrador da Prefeitura
+}
+
+enum JobStatus {
+  DRAFT      // Rascunho, não visível publicamente
+  OPEN       // Vaga aberta para candidaturas
+  PAUSED     // Pausada temporariamente (não aceita novas candidaturas)
+  CLOSED     // Encerrada pela empresa
+  EXPIRED    // Expirada automaticamente (passou expiresAt)
+}
+
+enum ApplicationStatus {
+  PENDING     // Candidatura enviada, aguardando análise
+  IN_REVIEW   // Em análise pela empresa
+  APPROVED    // Aprovada / candidato selecionado
+  REJECTED    // Rejeitada
+  WITHDRAWN   // Retirada pelo próprio candidato
+}
+
+enum ContractType {
+  CLT
+  PJ
+  INTERNSHIP
+  TEMPORARY
+  FREELANCE
+}
+
+// ----------------------------------------------------------------------------
+// MODELS
+// ----------------------------------------------------------------------------
+
+// Tabela central de autenticação. Um User SEMPRE tem um role.
+// Candidatos e Empresas têm perfis 1:1 associados (CandidateProfile / Company).
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  role          UserRole @default(CANDIDATE)
+  isActive      Boolean  @default(true) @map("is_active")
+
+  // Refresh tokens (hash) para controle de sessão / revogação. Nunca guardar o token puro.
+  refreshTokenHash String? @map("refresh_token_hash")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  candidateProfile CandidateProfile?
+  company          Company?
+
+  @@index([role])
+  @@map("users")
+}
+
+// Perfil / currículo do candidato. Separado de User para não inchar a tabela
+// de autenticação com dados de negócio (princípio de separação de concerns).
+model CandidateProfile {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fullName    String  @map("full_name")
+  cpf         String  @unique // validar formato/checksum na camada de aplicação (DTO), nunca confiar no client
+  phone       String?
+  birthDate   DateTime? @map("birth_date")
+  city        String?
+  state       String?   @db.VarChar(2)
+
+  headline    String? // ex: "Desenvolvedor Backend Pleno"
+  summary     String? @db.Text
+  resumeUrl   String? @map("resume_url") // PDF armazenado em storage externo (S3/GCS), nunca em base64 no banco
+  skills      Json?   // array de strings; para busca avançada, avaliar tabela normalizada futuramente
+  linkedinUrl String? @map("linkedin_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  applications Application[]
+
+  @@map("candidate_profiles")
+}
+
+// Empresa local cadastrada na plataforma. Um User com role=COMPANY possui
+// exatamente um registro Company (1:1), que por sua vez publica N vagas.
+model Company {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  legalName     String  @map("legal_name") // Razão social
+  tradeName     String? @map("trade_name") // Nome fantasia
+  cnpj          String  @unique
+  isVerified    Boolean @default(false) @map("is_verified") // validado manualmente pela Prefeitura antes de publicar vagas
+  phone         String?
+  address       String?
+  city          String?
+  state         String? @db.VarChar(2)
+  website       String?
+  description   String? @db.Text
+  logoUrl       String? @map("logo_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  jobs Job[]
+
+  @@index([cnpj])
+  @@map("companies")
+}
+
+model Job {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String       @db.Text
+  requirements    String?      @db.Text
+  benefits        String?      @db.Text
+  contractType    ContractType @map("contract_type")
+  status          JobStatus    @default(DRAFT)
+
+  salaryMin       Decimal?     @map("salary_min") @db.Decimal(10, 2)
+  salaryMax       Decimal?     @map("salary_max") @db.Decimal(10, 2)
+  isSalaryVisible Boolean      @default(true) @map("is_salary_visible")
+
+  vacancies       Int          @default(1) // número de vagas disponíveis para esta postagem
+  city            String?
+  state           String?      @db.VarChar(2)
+  isRemote        Boolean      @default(false) @map("is_remote")
+
+  publishedAt     DateTime?    @map("published_at")
+  expiresAt       DateTime?    @map("expires_at") // job vira EXPIRED automaticamente via job agendado (cron)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  applications Application[]
+
+  // Índices pensados para os filtros mais comuns do portal público (listagem/busca de vagas)
+  @@index([status, publishedAt])
+  @@index([city, state])
+  @@index([companyId])
+  @@map("jobs")
+}
+
+// Candidatura de um CandidateProfile a um Job. Unicidade (candidateId, jobId)
+// impede candidaturas duplicadas na mesma vaga.
+model Application {
+  id          String @id @default(uuid())
+  jobId       String @map("job_id")
+  job         Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  candidateId String           @map("candidate_id")
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  status       ApplicationStatus @default(PENDING)
+  coverLetter  String?           @map("cover_letter") @db.Text
+  companyNotes String?           @map("company_notes") @db.Text // notas internas da empresa, nunca expor ao candidato via DTO
+
+  reviewedAt DateTime? @map("reviewed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([candidateId, jobId], name: "uniqueCandidateJob")
+  @@index([jobId, status])
+  @@map("applications")
+}

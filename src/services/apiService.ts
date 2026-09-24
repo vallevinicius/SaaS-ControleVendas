@@ -397,8 +397,14 @@ export async function setUsuarioAtivo(id: string, ativo: boolean): Promise<void>
   await requisitar(`/usuarios/${id}/ativo`, { method: 'PUT', body: JSON.stringify({ ativo }) });
 }
 
-export async function setUsuarioPermissoes(id: string, permissoes: TelaComPermissao[]): Promise<Usuario> {
-  return requisitar(`/usuarios/${id}/permissoes`, { method: 'PUT', body: JSON.stringify({ permissoes }) });
+export interface AtualizarAcessoPayload {
+  permissoes?: TelaComPermissao[];
+  /** Só a conta principal da loja pode mudar o papel de outro login. */
+  papel?: 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
+}
+
+export async function atualizarAcessoUsuario(id: string, dados: AtualizarAcessoPayload): Promise<Usuario> {
+  return requisitar(`/usuarios/${id}/acesso`, { method: 'PUT', body: JSON.stringify(dados) });
 }
 
 // ----------------------------------------------------------------------------
@@ -476,7 +482,8 @@ export async function concederAcessoLoja(tenantId: string, usuarioId: string): P
 
 export interface AparenciaPayload {
   corPrincipalDoTema: string;
-  corPrincipalHover?: string;
+  /** null = calcular o hover automaticamente a partir da cor principal. */
+  corPrincipalHover?: string | null;
   logoDaLojaUrl?: string;
 }
 

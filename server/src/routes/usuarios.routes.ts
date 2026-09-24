@@ -6,6 +6,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { verificarLimiteRecurso } from '../middleware/plano.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
 
+type PapelUsuario = 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
+
 export const usuariosRouter = Router();
 usuariosRouter.use(requireAuth);
 
@@ -122,23 +124,51 @@ usuariosRouter.put('/:id/ativo', async (req, res) => {
   res.json(serializarUsuario(atualizado));
 });
 
-usuariosRouter.put('/:id/permissoes', async (req, res) => {
-  const { tenantId, papel: papelSolicitante } = req.usuario!;
+const atualizarAcessoSchema = z.object({
+  permissoes: permissoesSchema.optional(),
+  papel: z.enum(['ADMIN', 'GERENTE', 'OPERADOR_CAIXA']).optional(),
+});
+
+/** Muda o que um login vê (telas) e, só pra conta principal da loja, o
+ * próprio papel — promover/rebaixar alguém é sensível o bastante pra não
+ * deixar qualquer Admin fazer isso com outro Admin. */
+usuariosRouter.put('/:id/acesso', async (req, res) => {
+  const { tenantId, papel: papelSolicitante, id: idSolicitante } = req.usuario!;
   if (papelSolicitante !== 'ADMIN') {
-    return res.status(403).json({ erro: 'Só administradores da loja podem alterar permissões.' });
+    return res.status(403).json({ erro: 'Só administradores da loja podem alterar acessos.' });
   }
 
-  const parse = permissoesSchema.safeParse(req.body?.permissoes);
+  const parse = atualizarAcessoSchema.safeParse(req.body);
   if (!parse.success) {
-    return res.status(400).json({ erro: 'Permissões inválidas.', detalhes: parse.error.flatten() });
+    return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
   }
 
   const usuario = await prisma.usuario.findFirst({ where: { id: req.params.id, tenantId } });
   if (!usuario) return res.status(404).json({ erro: 'Usuário não encontrado.' });
 
-  const atualizado = await prisma.usuario.update({
-    where: { id: usuario.id },
-    data: { permissoes: parse.data },
-  });
+  const dadosAtualizacao: { papel?: PapelUsuario; permissoes?: string[] } = {};
+
+  if (parse.data.papel && parse.data.papel !== usuario.papel) {
+    if (usuario.id === idSolicitante) {
+      return res.status(400).json({ erro: 'Você não pode alterar seu próprio papel.' });
+    }
+    if (usuario.raiz) {
+      return res.status(400).json({ erro: 'A conta principal da loja não pode ter o papel alterado.' });
+    }
+    const solicitante = await prisma.usuario.findUnique({ where: { id: idSolicitante }, select: { raiz: true } });
+    if (!solicitante?.raiz) {
+      return res.status(403).json({ erro: 'Só a conta principal da loja pode alterar o papel de um usuário.' });
+    }
+    dadosAtualizacao.papel = parse.data.papel;
+  }
+
+  if (parse.data.permissoes) {
+    dadosAtualizacao.permissoes = parse.data.permissoes;
+  }
+
+  const atualizado = await prisma.usuario.update({ where: { id: usuario.id }, data: dadosAtualizacao });
+  if (dadosAtualizacao.papel) {
+    await registrarAuditoria(tenantId, idSolicitante, 'usuario.alterarPapel', `${usuario.nome} -> ${dadosAtualizacao.papel}`);
+  }
   res.json(serializarUsuario(atualizado));
 });

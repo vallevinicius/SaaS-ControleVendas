@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useTenant } from '@/contexts/TenantContext';
 import { ThemeToggle } from '@/components/Common/ThemeToggle';
 import { NotificationBell } from './NotificationBell';
+import { ConfiguracoesModal } from './ConfiguracoesModal';
 
 interface HeaderProps {
   titulo: string;
@@ -10,6 +12,7 @@ interface HeaderProps {
 
 export function Header({ titulo, subtitulo, aoAbrirMenu }: HeaderProps) {
   const { usuarioAtual, logout } = useTenant();
+  const [mostrarConfiguracoes, setMostrarConfiguracoes] = useState(false);
 
   return (
     <header className="flex items-center justify-between border-b border-ink-700 bg-ink-800/60 px-4 py-5 md:px-8">
@@ -33,6 +36,18 @@ export function Header({ titulo, subtitulo, aoAbrirMenu }: HeaderProps) {
         <ThemeToggle />
         <NotificationBell />
 
+        {usuarioAtual?.raiz && (
+          <button
+            onClick={() => setMostrarConfiguracoes(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-ink-600 px-3 py-2 text-xs font-medium text-ink-300 hover:border-ink-500 hover:text-ink-100"
+          >
+            <span aria-hidden className="text-sm leading-none">
+              ⚙
+            </span>
+            <span className="hidden sm:inline">Configurações</span>
+          </button>
+        )}
+
         <div className="hidden items-center gap-2.5 rounded-full bg-ink-700 py-1.5 pl-1.5 pr-3.5 sm:flex">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-tenant text-xs font-semibold text-tenant-foreground">
             {usuarioAtual?.nome.charAt(0) ?? '?'}
@@ -50,6 +65,8 @@ export function Header({ titulo, subtitulo, aoAbrirMenu }: HeaderProps) {
           Sair
         </button>
       </div>
+
+      {mostrarConfiguracoes && <ConfiguracoesModal aoFechar={() => setMostrarConfiguracoes(false)} />}
     </header>
   );
 }

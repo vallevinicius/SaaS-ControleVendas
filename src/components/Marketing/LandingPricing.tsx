@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { LIMITES_POR_PLANO } from '@/utils/planos';
+import { linkWhatsapp } from '@/utils/contato';
 import type { PlanoSaaS } from '@/types';
 
 interface CartaoPlano {
@@ -38,26 +39,37 @@ function listaRecursos(plano: PlanoSaaS): string[] {
 
 export function LandingPricing() {
   return (
-    <section id="planos" className="py-20">
+    <section id="planos" className="relative py-20">
       <div className="mx-auto max-w-6xl px-5">
         <div className="mx-auto max-w-xl text-center">
-          <h2 className="font-display text-3xl font-bold tracking-tight text-ink-100">
+          <span className="inline-flex items-center gap-2 rounded-full border border-ink-700 bg-ink-800 px-3 py-1 text-xs font-medium text-tenant">
+            Planos
+          </span>
+          <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-ink-100">
             Planos pra cada tamanho de loja
           </h2>
-          <p className="mt-3 text-ink-400">Comece grátis por 14 dias — sem cartão de crédito.</p>
+          <p className="mt-3 text-ink-400">Comece grátis por 14 dias | sem cartão de crédito.</p>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3 md:items-start">
           {PLANOS.map(({ plano, rotulo, preco, detalhePreco, destaque }) => (
             <div
               key={plano}
               className={[
-                'flex flex-col rounded-2xl border p-6',
-                destaque ? 'border-tenant bg-tenant-soft' : 'border-ink-700 bg-ink-800',
+                'relative flex flex-col rounded-2xl border p-6 transition-transform duration-200',
+                destaque
+                  ? 'border-tenant bg-ink-800 shadow-2xl shadow-tenant/10 md:-translate-y-3 md:scale-[1.03]'
+                  : 'border-ink-700 bg-ink-800 hover:-translate-y-1 hover:border-ink-600',
               ].join(' ')}
             >
               {destaque && (
-                <span className="mb-3 w-fit rounded-full bg-tenant px-2.5 py-0.5 text-xs font-semibold text-tenant-foreground">
+                <div
+                  className="pointer-events-none absolute inset-x-6 -top-3 h-3 rounded-full bg-tenant/30 blur-md"
+                  aria-hidden
+                />
+              )}
+              {destaque && (
+                <span className="relative mb-3 w-fit rounded-full bg-tenant px-2.5 py-0.5 text-xs font-semibold text-tenant-foreground">
                   Mais popular
                 </span>
               )}
@@ -69,7 +81,10 @@ export function LandingPricing() {
               <ul className="mt-6 flex-1 space-y-2.5 text-sm text-ink-300">
                 {listaRecursos(plano).map((item) => (
                   <li key={item} className="flex items-center gap-2">
-                    <span aria-hidden className="text-tenant">
+                    <span
+                      aria-hidden
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-tenant-soft text-[10px] text-tenant"
+                    >
                       ✓
                     </span>
                     {item}
@@ -79,9 +94,9 @@ export function LandingPricing() {
               <Link
                 to="/registrar"
                 className={[
-                  'mt-6 rounded-lg py-2.5 text-center text-sm font-semibold transition-opacity',
+                  'mt-6 rounded-lg py-2.5 text-center text-sm font-semibold transition-all',
                   destaque
-                    ? 'bg-tenant text-tenant-foreground hover:opacity-90'
+                    ? 'bg-tenant text-tenant-foreground shadow-md shadow-tenant/20 hover:opacity-90'
                     : 'border border-ink-600 text-ink-200 hover:border-ink-500 hover:text-ink-100',
                 ].join(' ')}
               >
@@ -90,8 +105,17 @@ export function LandingPricing() {
             </div>
           ))}
         </div>
-        <p className="mt-6 text-center text-xs text-ink-500">
-          Precisa de mais de uma loja e ainda não é Enterprise? Fale com a gente.
+        <p className="mt-8 text-center text-xs text-ink-500">
+          Precisa de mais de uma loja e ainda não é Enterprise?{' '}
+          <a
+            href={linkWhatsapp('Olá! Quero saber mais sobre o plano Enterprise do Total Control.')}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-tenant hover:underline"
+          >
+            Fale com a gente no WhatsApp
+          </a>
+          .
         </p>
       </div>
     </section>

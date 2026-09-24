@@ -65,7 +65,7 @@ export function AuditoriaScreen() {
                   </td>
                   <td className="px-5 py-3.5 font-medium text-ink-100">{r.usuarioNome}</td>
                   <td className="px-5 py-3.5 text-ink-300">{ROTULOS_ACAO[r.acao] ?? r.acao}</td>
-                  <td className="px-5 py-3.5 text-ink-400">{r.detalhe ?? '—'}</td>
+                  <td className="px-5 py-3.5 text-ink-400">{r.detalhe ?? '|'}</td>
                 </tr>
               ))}
             </tbody>
