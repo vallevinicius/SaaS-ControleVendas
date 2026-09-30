@@ -3,16 +3,33 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { assinarToken, requireAuth } from '../middleware/auth.js';
-import { calcularTrialExpiraEm, LIMITES_POR_PLANO } from '../config/planos.js';
+import { cpfValido, normalizarCnpj } from '../lib/documentos.js';
+import { calcularTrialExpiraEm, LIMITES_POR_PLANO, motivoAcessoExpirado } from '../config/planos.js';
 
 export const authRouter = Router();
 
+const textoOpcional = z.string().trim().max(191).optional();
+
 const registerSchema = z.object({
   nomeFantasia: z.string().min(2),
+  razaoSocial: z.string().trim().min(2).max(191),
   cnpj: z.string().min(1),
+  inscricaoEstadual: textoOpcional,
+  inscricaoMunicipal: textoOpcional,
+  regimeTributario: textoOpcional,
   telefone: z.string().optional(),
   emailContato: z.string().email().optional().or(z.literal('')),
+  site: textoOpcional,
+  cep: textoOpcional,
+  logradouro: textoOpcional,
+  numero: textoOpcional,
+  complemento: textoOpcional,
+  bairro: textoOpcional,
+  cidade: textoOpcional,
+  uf: z.string().trim().length(2).optional().or(z.literal('')),
   nomeAdmin: z.string().min(2),
+  cpfAdmin: textoOpcional,
+  telefoneAdmin: textoOpcional,
   email: z.string().email(),
   senha: z.string().min(6),
 });
@@ -22,7 +39,37 @@ authRouter.post('/register', async (req, res) => {
   if (!parse.success) {
     return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
   }
-  const { nomeFantasia, cnpj, telefone, emailContato, nomeAdmin, email, senha } = parse.data;
+  const {
+    nomeFantasia,
+    razaoSocial,
+    cnpj: cnpjInformado,
+    inscricaoEstadual,
+    inscricaoMunicipal,
+    regimeTributario,
+    telefone,
+    emailContato,
+    site,
+    cep,
+    logradouro,
+    numero,
+    complemento,
+    bairro,
+    cidade,
+    uf,
+    nomeAdmin,
+    cpfAdmin,
+    telefoneAdmin,
+    email,
+    senha,
+  } = parse.data;
+
+  const cnpj = normalizarCnpj(cnpjInformado);
+  if (!cnpj) {
+    return res.status(400).json({ erro: 'CNPJ inválido. Confira os números.' });
+  }
+  if (cpfAdmin && !cpfValido(cpfAdmin)) {
+    return res.status(400).json({ erro: 'CPF do responsável inválido.' });
+  }
 
   const emailExistente = await prisma.usuario.findUnique({ where: { email } });
   if (emailExistente) {
@@ -50,9 +97,21 @@ authRouter.post('/register', async (req, res) => {
       data: {
         empresaId: empresa.id,
         nomeFantasia,
+        razaoSocial,
         cnpj,
+        inscricaoEstadual: inscricaoEstadual || undefined,
+        inscricaoMunicipal: inscricaoMunicipal || undefined,
+        regimeTributario: regimeTributario || undefined,
         telefone: telefone || undefined,
         email: emailContato || undefined,
+        site: site || undefined,
+        cep: cep || undefined,
+        logradouro: logradouro || undefined,
+        numero: numero || undefined,
+        complemento: complemento || undefined,
+        bairro: bairro || undefined,
+        cidade: cidade || undefined,
+        uf: uf || undefined,
         logoDaLojaUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nomeFantasia)}&backgroundType=gradientLinear`,
         corPrincipalDoTema: '#10B981',
       },
@@ -61,6 +120,8 @@ authRouter.post('/register', async (req, res) => {
       data: {
         tenantId: tenant.id,
         nome: nomeAdmin,
+        cpf: cpfAdmin || undefined,
+        telefone: telefoneAdmin || undefined,
         email,
         senhaHash,
         papel: 'ADMIN',
@@ -97,9 +158,11 @@ authRouter.post('/login', async (req, res) => {
   if (!usuario.tenant.empresa.ativo) {
     return res.status(403).json({ erro: 'Esta loja está suspensa. Fale com o suporte.' });
   }
-  if (usuario.tenant.empresa.trialExpiraEm && usuario.tenant.empresa.trialExpiraEm < new Date()) {
-    return res.status(403).json({ erro: 'Seu teste grátis expirou. Fale com a gente para continuar usando.' });
+  if (!usuario.tenant.ativo) {
+    return res.status(403).json({ erro: 'Esta loja foi desativada pelo responsável da empresa.' });
   }
+  // Teste expirado ou assinatura vencida não bloqueiam o login: a pessoa entra e
+  // cai na tela do plano pra assinar (ver requireAuth e /auth/me).
 
   const senhaConfere = await bcrypt.compare(senha, usuario.senhaHash);
   if (!senhaConfere) {
@@ -117,6 +180,8 @@ authRouter.post('/login', async (req, res) => {
  * inacessíveis (dados preservados, só o acesso é suspenso) até promover de
  * volta — só a loja de origem continua disponível. */
 async function possuiAcessoALoja(usuarioId: string, tenantIdHome: string, tenantId: string): Promise<boolean> {
+  const alvo = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { ativo: true } });
+  if (!alvo?.ativo) return false;
   if (tenantId === tenantIdHome) return true;
 
   const acesso = await prisma.acessoLoja.findUnique({
@@ -146,9 +211,6 @@ authRouter.get('/me', requireAuth, async (req, res) => {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantIdAtivo }, include: { empresa: true } });
   if (!tenant) return res.status(404).json({ erro: 'Loja não encontrada.' });
   if (!tenant.empresa.ativo) return res.status(403).json({ erro: 'Esta loja está suspensa. Fale com o suporte.' });
-  if (tenant.empresa.trialExpiraEm && tenant.empresa.trialExpiraEm < new Date()) {
-    return res.status(403).json({ erro: 'Seu teste grátis expirou. Fale com a gente para continuar usando.' });
-  }
 
   // As lojas extras (via AcessoLoja) só aparecem no seletor enquanto o plano
   // da empresa cobrir multiLoja — se foi rebaixada, elas somem da lista (os
@@ -157,16 +219,16 @@ authRouter.get('/me', requireAuth, async (req, res) => {
   const acessosExtras = multiLojaAtivo
     ? await prisma.acessoLoja.findMany({
         where: { usuarioId: usuario.id },
-        include: { tenant: { select: { id: true, nomeFantasia: true } } },
+        include: { tenant: { select: { id: true, nomeFantasia: true, ativo: true } } },
       })
     : [];
   const lojaHome =
     usuario.tenantId === tenant.id
-      ? { id: tenant.id, nomeFantasia: tenant.nomeFantasia }
-      : await prisma.tenant.findUnique({ where: { id: usuario.tenantId }, select: { id: true, nomeFantasia: true } });
-  const lojas = [lojaHome, ...acessosExtras.map((a) => a.tenant)].filter(
-    (l): l is { id: string; nomeFantasia: string } => Boolean(l),
-  );
+      ? { id: tenant.id, nomeFantasia: tenant.nomeFantasia, ativo: tenant.ativo }
+      : await prisma.tenant.findUnique({ where: { id: usuario.tenantId }, select: { id: true, nomeFantasia: true, ativo: true } });
+  const lojas = [lojaHome, ...acessosExtras.map((a) => a.tenant)]
+    .filter((l): l is { id: string; nomeFantasia: string; ativo: boolean } => Boolean(l) && l!.ativo !== false)
+    .map((l) => ({ id: l.id, nomeFantasia: l.nomeFantasia }));
 
   res.json({
     usuario: {
@@ -186,8 +248,27 @@ authRouter.get('/me', requireAuth, async (req, res) => {
       cnpj: tenant.cnpj,
       telefone: tenant.telefone ?? undefined,
       email: tenant.email ?? undefined,
+      site: tenant.site ?? undefined,
+      inscricaoEstadual: tenant.inscricaoEstadual ?? undefined,
+      inscricaoMunicipal: tenant.inscricaoMunicipal ?? undefined,
+      regimeTributario: tenant.regimeTributario ?? undefined,
+      endereco: {
+        cep: tenant.cep ?? undefined,
+        logradouro: tenant.logradouro ?? undefined,
+        numero: tenant.numero ?? undefined,
+        complemento: tenant.complemento ?? undefined,
+        bairro: tenant.bairro ?? undefined,
+        cidade: tenant.cidade ?? undefined,
+        uf: tenant.uf ?? undefined,
+      },
       planoAtual: tenant.empresa.planoAtual,
       trialExpiraEm: tenant.empresa.trialExpiraEm?.toISOString() ?? undefined,
+      assinatura: {
+        status: tenant.empresa.assinaturaStatus,
+        acessoAte: tenant.empresa.acessoAte?.toISOString() ?? undefined,
+        canceladaEm: tenant.empresa.canceladaEm?.toISOString() ?? undefined,
+      },
+      acessoExpirado: motivoAcessoExpirado(tenant.empresa) ?? undefined,
       configuracoes: {
         logoDaLojaUrl: tenant.logoDaLojaUrl,
         corPrincipalDoTema: tenant.corPrincipalDoTema,

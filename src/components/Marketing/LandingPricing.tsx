@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { LIMITES_POR_PLANO } from '@/utils/planos';
 import { linkWhatsapp } from '@/utils/contato';
+import { LandingComparison } from './LandingComparison';
 import type { PlanoSaaS } from '@/types';
 
 interface CartaoPlano {
@@ -48,7 +49,7 @@ export function LandingPricing() {
           <h2 className="mt-4 font-display text-3xl font-bold tracking-tight text-ink-100">
             Planos pra cada tamanho de loja
           </h2>
-          <p className="mt-3 text-ink-400">Comece grátis por 14 dias | sem cartão de crédito.</p>
+          <p className="mt-3 text-ink-400">Comece grátis por 14 dias, sem cartão de crédito.</p>
         </div>
 
         <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3 md:items-start">
@@ -91,20 +92,34 @@ export function LandingPricing() {
                   </li>
                 ))}
               </ul>
-              <Link
-                to="/registrar"
-                className={[
+              {(() => {
+                const classeBotao = [
                   'mt-6 rounded-lg py-2.5 text-center text-sm font-semibold transition-all',
                   destaque
                     ? 'bg-tenant text-tenant-foreground shadow-md shadow-tenant/20 hover:opacity-90'
                     : 'border border-ink-600 text-ink-200 hover:border-ink-500 hover:text-ink-100',
-                ].join(' ')}
-              >
-                Começar teste grátis
-              </Link>
+                ].join(' ');
+                // Enterprise tem preço "a partir de" e cobrança por loja, então
+                // o caminho é conversar antes, não cadastrar direto.
+                return plano === 'ENTERPRISE' ? (
+                  <a
+                    href={linkWhatsapp('Olá! Quero saber mais sobre o plano Enterprise do Total Control.')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={classeBotao}
+                  >
+                    Falar com a gente
+                  </a>
+                ) : (
+                  <Link to="/registrar" className={classeBotao}>
+                    Começar teste grátis
+                  </Link>
+                );
+              })()}
             </div>
           ))}
         </div>
+        <LandingComparison />
         <p className="mt-8 text-center text-xs text-ink-500">
           Precisa de mais de uma loja e ainda não é Enterprise?{' '}
           <a

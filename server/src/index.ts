@@ -14,6 +14,7 @@ import { usuariosRouter } from './routes/usuarios.routes.js';
 import { caixaRouter } from './routes/caixa.routes.js';
 import { vendedoresRouter } from './routes/vendedores.routes.js';
 import { lojasRouter } from './routes/lojas.routes.js';
+import { assinaturaRouter } from './routes/assinatura.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
 import { auditoriaRouter } from './routes/auditoria.routes.js';
 import { tenantRouter } from './routes/tenant.routes.js';
@@ -44,6 +45,7 @@ app.use('/api/lojas', lojasRouter);
 app.use('/api/auditoria', auditoriaRouter);
 app.use('/api/tenant', tenantRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/assinatura', assinaturaRouter);
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 

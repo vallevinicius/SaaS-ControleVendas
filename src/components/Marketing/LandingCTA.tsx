@@ -15,7 +15,7 @@ export function LandingCTA() {
           Pronto pra tirar sua loja da planilha?
         </h2>
         <p className="mt-3 text-tenant-foreground/90">
-          Comece seu teste grátis de 14 dias | sem cartão de crédito.
+          Comece seu teste grátis de 14 dias, sem cartão de crédito.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <Link

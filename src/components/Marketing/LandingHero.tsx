@@ -28,7 +28,7 @@ export function LandingHero() {
           </h1>
           <p className="mt-5 max-w-lg text-lg text-ink-400">
             O Total Control é o sistema de ponto de venda feito pro pequeno varejo brasileiro:
-            venda no PDV, controle o estoque, acompanhe o financeiro e gerencie sua equipe | sem
+            venda no PDV, controle o estoque, acompanhe o financeiro e gerencie sua equipe, sem
             complicação.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -81,9 +81,12 @@ export function LandingHero() {
                 <span className="text-sm font-medium text-ink-300">Total</span>
                 <span className="font-display text-xl font-bold text-tenant">R$ 38,00</span>
               </div>
-              <button className="w-full rounded-lg bg-tenant py-2.5 text-sm font-semibold text-tenant-foreground">
+              <div
+                aria-hidden
+                className="w-full rounded-lg bg-tenant py-2.5 text-center text-sm font-semibold text-tenant-foreground"
+              >
                 Finalizar venda
-              </button>
+              </div>
             </div>
           </div>
 

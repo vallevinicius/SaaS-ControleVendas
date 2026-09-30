@@ -7,6 +7,7 @@ const LINKS_ANCORA = [
   { href: '#recursos', rotulo: 'Recursos' },
   { href: '#como-funciona', rotulo: 'Como funciona' },
   { href: '#planos', rotulo: 'Planos' },
+  { href: '#faq', rotulo: 'Dúvidas' },
 ];
 
 export function LandingHeader() {

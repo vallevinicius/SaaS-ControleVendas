@@ -40,12 +40,40 @@ também pode criar uma loja nova pela tela de registro do app.
 
 ### 1.1. Painel interno da Total Software
 
-Em `http://localhost:3099/#/admin/login`, com o `ADMIN_EMAIL`/`ADMIN_SENHA`
-definidos no `server/.env`. Esse login não pertence a nenhuma loja — é de
-uso exclusivo da equipe da Total Software para listar todos os
-estabelecimentos, trocar o plano de uma loja, ativar/desativar o login de um
-usuário ou resetar a senha de alguém que perdeu acesso. Não há link para
-essa tela em nenhum menu do app de loja — é acesso só por URL direta.
+Entre pela mesma tela de login do app (`/login`) com o `ADMIN_EMAIL`/`ADMIN_SENHA`
+definidos no `server/.env`: quem não é usuário de nenhuma loja cai direto em
+`/admin`. Esse login é de uso exclusivo da equipe da Total Software e reúne, em
+um só painel, o que antes ficava no site totalSoftwareAdmin:
+
+- indicadores gerais (empresas, lojas, usuários, testes grátis, vendas e faturamento do mês);
+- lista de empresas com busca e filtros por situação e plano;
+- por empresa: trocar o plano, suspender/reativar e excluir (com confirmação digitada);
+- por loja: dados cadastrais completos (razão social, inscrições, regime, contato, endereço), indicadores de uso, desativar/reativar e excluir (LGPD);
+- por usuário: ativar/desativar e resetar a senha (gera uma senha temporária);
+- criar uma nova empresa já com todos os dados cadastrais.
+
+Não há link para essa tela em nenhum menu do app de loja: o acesso é só pelo login.
+
+### 1.2. Assinaturas e pagamento (Mercado Pago)
+
+A tela **Meu plano** deixa a conta principal assinar (Starter ou Pro), fazer
+upgrade, mudar de plano e cancelar. A cobrança é uma assinatura recorrente
+mensal no Mercado Pago (`server/src/lib/mercadopago.ts`, rotas em
+`server/src/routes/assinatura.routes.ts`). O Enterprise é combinado com a equipe.
+
+Configure no `server/.env` (veja `server/.env.example`):
+
+- `MERCADOPAGO_ACCESS_TOKEN`: token da aplicação no painel de desenvolvedores;
+- `APP_URL`: endereço do site (pra onde o Mercado Pago devolve a pessoa);
+- `API_PUBLIC_URL`: endereço público da API, usado no aviso automático
+  (`POST /api/assinatura/webhook`). Local pode ficar vazio: ao voltar do
+  checkout a tela consulta o Mercado Pago diretamente.
+
+Regras: o plano só muda quando o Mercado Pago autoriza o pagamento; ao trocar de
+plano a assinatura anterior é cancelada; cancelar mantém o acesso até o fim do
+período já pago (`Empresa.acessoAte`). Com o teste grátis ou a assinatura
+vencidos, o login funciona mas só a tela do plano abre (a API responde 402
+`ACESSO_EXPIRADO` nas demais rotas).
 
 ### 2. Rodar o frontend + backend juntos
 

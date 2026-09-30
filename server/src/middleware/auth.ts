@@ -1,5 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../lib/prisma.js';
+import { motivoAcessoExpirado } from '../config/planos.js';
 
 export interface UsuarioAutenticado {
   id: string;
@@ -42,23 +44,46 @@ function extrairToken(req: Request): string | null {
   return header?.startsWith('Bearer ') ? header.slice(7) : null;
 }
 
-/** Autentica usuários de uma loja (tenant). Rejeita tokens do painel admin. */
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+/** Autentica usuários de uma loja (tenant). Rejeita tokens do painel admin e
+ * de lojas que o dono desativou (o token continua válido até expirar, então
+ * a checagem precisa acontecer a cada requisição). */
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extrairToken(req);
   if (!token) {
     return res.status(401).json({ erro: 'Token de autenticação ausente.' });
   }
 
+  let payload: UsuarioAutenticado | AdminAutenticado;
   try {
-    const payload = jwt.verify(token, JWT_SECRET as string) as UsuarioAutenticado | AdminAutenticado;
-    if ('tipo' in payload && payload.tipo === 'PLATAFORMA') {
-      return res.status(403).json({ erro: 'Token de admin não pode ser usado aqui.' });
-    }
-    req.usuario = payload as UsuarioAutenticado;
-    next();
+    payload = jwt.verify(token, JWT_SECRET as string) as UsuarioAutenticado | AdminAutenticado;
   } catch {
     return res.status(401).json({ erro: 'Token inválido ou expirado.' });
   }
+  if ('tipo' in payload && payload.tipo === 'PLATAFORMA') {
+    return res.status(403).json({ erro: 'Token de admin não pode ser usado aqui.' });
+  }
+
+  try {
+    const loja = await prisma.tenant.findUnique({
+      where: { id: (payload as UsuarioAutenticado).tenantId },
+      select: { ativo: true, empresa: { select: { trialExpiraEm: true, assinaturaStatus: true, acessoAte: true } } },
+    });
+    if (loja && !loja.ativo) {
+      return res.status(403).json({ erro: 'Esta loja foi desativada.' });
+    }
+    // Teste grátis acabado ou assinatura cancelada com o período já vencido: o
+    // login continua valendo, mas só a sessão e a tela do plano funcionam, pra
+    // a pessoa conseguir assinar de novo.
+    const liberadas = req.originalUrl.startsWith('/api/assinatura') || req.originalUrl.startsWith('/api/auth');
+    if (loja && !liberadas && motivoAcessoExpirado(loja.empresa)) {
+      return res.status(402).json({ erro: 'Seu acesso expirou. Escolha um plano para continuar.', codigo: 'ACESSO_EXPIRADO' });
+    }
+  } catch (erro) {
+    return next(erro);
+  }
+
+  req.usuario = payload as UsuarioAutenticado;
+  next();
 }
 
 /** Autentica o admin interno da Total Software (painel /admin). */

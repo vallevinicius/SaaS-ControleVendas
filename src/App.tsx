@@ -12,6 +12,8 @@ import { ClientesScreen } from '@/components/Clientes/ClientesScreen';
 import { VendedoresScreen } from '@/components/Vendedores/VendedoresScreen';
 import { RelatoriosScreen } from '@/components/Relatorios/RelatoriosScreen';
 import { FinanceiroScreen } from '@/components/Financeiro/FinanceiroScreen';
+import { LojasScreen } from '@/components/Lojas/LojasScreen';
+import { LancamentosScreen } from '@/components/Financeiro/LancamentosScreen';
 import { UsuariosScreen } from '@/components/Usuarios/UsuariosScreen';
 import { MeuPlanoScreen } from '@/components/Conta/MeuPlanoScreen';
 import { AuditoriaScreen } from '@/components/Conta/AuditoriaScreen';
@@ -42,16 +44,21 @@ function RotaProtegida({
   children,
   tela,
   fallbackPublico,
+  permiteExpirado,
 }: {
   children: ReactNode;
   tela?: TelaComPermissao;
   /** Renderizado no lugar do redirect pra /login quando não autenticado —
    * usado só na rota "/" pra mostrar a landing page em vez de forçar login. */
   fallbackPublico?: ReactNode;
+  /** Rotas que continuam abertas com o acesso expirado (só a tela do plano). */
+  permiteExpirado?: boolean;
 }) {
   const { autenticado, carregando, usuarioAtual, tenant } = useTenant();
   if (carregando) return <TelaCarregando />;
   if (!autenticado) return fallbackPublico ? <>{fallbackPublico}</> : <Navigate to="/login" replace />;
+  // Teste grátis acabado ou assinatura vencida: só a tela do plano abre.
+  if (tenant?.acessoExpirado && !permiteExpirado) return <Navigate to="/plano" replace />;
   if (tela && !podeVerTela(usuarioAtual, tela)) return <Navigate to="/" replace />;
   if (tela && tenant && !planoPermiteTela(tenant.planoAtual, tela)) return <Navigate to="/" replace />;
   return <>{children}</>;
@@ -116,6 +123,14 @@ function Roteador() {
         }
       />
       <Route
+        path="/financeiro/lancamentos"
+        element={
+          <RotaProtegida tela="financeiro">
+            <LancamentosScreen />
+          </RotaProtegida>
+        }
+      />
+      <Route
         path="/clientes"
         element={
           <RotaProtegida tela="clientes">
@@ -140,6 +155,14 @@ function Roteador() {
         }
       />
       <Route
+        path="/lojas"
+        element={
+          <RotaProtegida>
+            <LojasScreen />
+          </RotaProtegida>
+        }
+      />
+      <Route
         path="/usuarios"
         element={
           <RotaProtegida>
@@ -150,7 +173,7 @@ function Roteador() {
       <Route
         path="/plano"
         element={
-          <RotaProtegida>
+          <RotaProtegida permiteExpirado>
             <MeuPlanoScreen />
           </RotaProtegida>
         }

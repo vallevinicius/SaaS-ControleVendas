@@ -56,6 +56,21 @@ model Empresa {
   /// criadas direto num plano pago. Ao expirar, o login é bloqueado até o
   /// admin promover a empresa para um plano pago (ver server/src/routes/auth.routes.ts).
   trialExpiraEm DateTime?
+  /// Assinatura recorrente no Mercado Pago (ver server/src/lib/mercadopago.ts).
+  /// NENHUMA (só teste/cortesia) | PENDENTE (checkout aberto) | ATIVA |
+  /// CANCELADA (não renova; o acesso vai até `acessoAte`) | PAUSADA (cobrança falhou).
+  assinaturaStatus String    @default("NENHUMA")
+  /// Assinatura vigente no Mercado Pago (a que está sendo cobrada).
+  mpAssinaturaId   String?
+  /// Checkout aberto de um novo plano/upgrade; vira `mpAssinaturaId` quando autorizado
+  /// (e a anterior é cancelada), sem perder o controle da vigente enquanto isso.
+  mpCheckoutId     String?
+  /// Plano escolhido no checkout ainda não confirmado (vira `planoAtual` quando o
+  /// Mercado Pago autoriza a assinatura).
+  planoPendente    PlanoSaaS?
+  /// Fim do período já pago: até essa data o acesso continua, mesmo cancelada.
+  acessoAte        DateTime?
+  canceladaEm      DateTime?
   /// Empresa suspensa pela Total Software (ex: inadimplência, abuso) —
   /// ninguém de nenhuma loja dela consegue logar enquanto estiver false.
   ativo         Boolean   @default(true)
@@ -73,12 +88,27 @@ model Tenant {
   /// Meios de contato da empresa (não é o e-mail de login de nenhum usuário).
   telefone                String?
   email                   String?
+  site                    String?
+  /// Dados fiscais e de endereço, coletados no cadastro da empresa.
+  inscricaoEstadual       String?
+  inscricaoMunicipal      String?
+  regimeTributario        String?
+  cep                     String?
+  logradouro              String?
+  numero                  String?
+  complemento             String?
+  bairro                  String?
+  cidade                  String?
+  uf                      String?
   logoDaLojaUrl           String   @db.MediumText
   corPrincipalDoTema      String
   corPrincipalHover       String?
   fusoHorario             String   @default("America/Sao_Paulo")
   moeda                   String   @default("BRL")
   exigirSenhaAoAbrirCaixa Boolean  @default(false)
+  /// Loja desativada pelo dono da empresa: some do seletor de lojas e ninguém
+  /// entra nela, mas os dados (vendas, estoque...) ficam preservados.
+  ativo                   Boolean  @default(true)
   criadoEm                DateTime @default(now())
 
   empresa               Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
@@ -117,6 +147,8 @@ model Usuario {
   nome      String
   email     String       @unique
   senhaHash String
+  cpf       String?
+  telefone  String?
   papel     PapelUsuario @default(OPERADOR_CAIXA)
   /// Telas que este usuário pode acessar (ex: ["dashboard","pdv"]).
   /// Ignorado para papel ADMIN, que sempre tem acesso total. `null` (contas

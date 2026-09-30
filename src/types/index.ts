@@ -39,6 +39,25 @@ export interface TenantConfiguracoes {
   exigirSenhaAoAbrirCaixa?: boolean;
 }
 
+export type StatusAssinatura = 'NENHUMA' | 'PENDENTE' | 'ATIVA' | 'CANCELADA' | 'PAUSADA';
+
+export interface ResumoAssinaturaTenant {
+  status: StatusAssinatura;
+  /** Fim do período já pago (o acesso vai até aqui, mesmo cancelada). */
+  acessoAte?: string;
+  canceladaEm?: string;
+}
+
+export interface EnderecoTenant {
+  cep?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+}
+
 /** Empresa/loja assinante do SaaS — a raiz de todo o isolamento multi-tenant. */
 export interface Tenant {
   id: string;
@@ -48,7 +67,16 @@ export interface Tenant {
   /** Meios de contato da empresa — não é o e-mail de login de nenhum usuário. */
   telefone?: string;
   email?: string;
+  site?: string;
+  inscricaoEstadual?: string;
+  inscricaoMunicipal?: string;
+  regimeTributario?: string;
+  endereco?: EnderecoTenant;
   planoAtual: PlanoSaaS;
+  /** Situação da assinatura paga (Mercado Pago). */
+  assinatura?: ResumoAssinaturaTenant;
+  /** Por que o acesso acabou (teste grátis ou assinatura vencida); ausente se está liberado. */
+  acessoExpirado?: 'TRIAL' | 'ASSINATURA';
   /** Data em que o teste grátis expira (independe do plano — hoje o cadastro
    * self-service já entra em STARTER com trial). Ausente fora do trial. */
   trialExpiraEm?: string; // ISO date
@@ -355,4 +383,117 @@ export interface ProdutoParaImportar {
   precoVenda: number;
   quantidadeEmEstoque: number;
   estoqueMinimo: number;
+}
+
+// ----------------------------------------------------------------------------
+// PAINEL ADMIN DA PLATAFORMA (Total Software) — espelha GET /admin/empresas
+// ----------------------------------------------------------------------------
+
+export interface UsuarioAdmin {
+  id: string;
+  nome: string;
+  email: string;
+  cpf?: string;
+  telefone?: string;
+  papel: PapelUsuario;
+  /** Conta principal da loja (quem administra a assinatura). */
+  raiz: boolean;
+  ativo: boolean;
+  criadoEm: string;
+}
+
+export interface LojaAdmin {
+  id: string;
+  nomeFantasia: string;
+  razaoSocial?: string;
+  cnpj: string;
+  telefone?: string;
+  email?: string;
+  site?: string;
+  inscricaoEstadual?: string;
+  inscricaoMunicipal?: string;
+  regimeTributario?: string;
+  endereco: EnderecoTenant;
+  ativo: boolean;
+  criadoEm: string;
+  indicadores: {
+    produtos: number;
+    vendasDoMes: number;
+    faturamentoDoMes: number;
+    ultimaVenda?: string;
+  };
+  usuarios: UsuarioAdmin[];
+}
+
+export interface EmpresaAdmin {
+  id: string;
+  nome: string;
+  planoAtual: PlanoSaaS;
+  assinatura: ResumoAssinaturaTenant;
+  trialExpiraEm?: string;
+  ativo: boolean;
+  criadoEm: string;
+  lojas: LojaAdmin[];
+}
+
+// ----------------------------------------------------------------------------
+// GESTÃO DE LOJAS (tela /lojas, plano Enterprise) — espelha GET /lojas
+// ----------------------------------------------------------------------------
+
+export interface LojaGestao {
+  id: string;
+  nomeFantasia: string;
+  razaoSocial?: string;
+  cnpj: string;
+  telefone?: string;
+  email?: string;
+  site?: string;
+  inscricaoEstadual?: string;
+  inscricaoMunicipal?: string;
+  regimeTributario?: string;
+  endereco: EnderecoTenant;
+  logoDaLojaUrl: string;
+  corPrincipalDoTema: string;
+  fusoHorario: string;
+  exigirSenhaAoAbrirCaixa: boolean;
+  ativo: boolean;
+  criadoEm: string;
+  /** É a loja em que o usuário está logado agora. */
+  atual: boolean;
+  indicadores: { usuarios: number; produtos: number; vendasDoMes: number; faturamentoDoMes: number };
+}
+
+/** Quem pode entrar numa loja: usuário dela (PROPRIO) ou com acesso extra (CONCEDIDO). */
+export interface AcessoDaLoja {
+  id: string;
+  nome: string;
+  email: string;
+  papel: PapelUsuario;
+  ativo: boolean;
+  origem: 'PROPRIO' | 'CONCEDIDO';
+  concedidoEm?: string;
+}
+
+export interface UsuarioDaEmpresa {
+  id: string;
+  nome: string;
+  email: string;
+  papel: PapelUsuario;
+  lojaId: string;
+  lojaNome: string;
+}
+
+/** Resposta de GET /assinatura (tela Meu plano). */
+export interface AssinaturaResumo {
+  plano: PlanoSaaS;
+  status: StatusAssinatura;
+  trialExpiraEm: string | null;
+  acessoAte: string | null;
+  canceladaEm: string | null;
+  /** Plano do checkout aberto, ainda não pago. */
+  planoPendente: PlanoSaaS | null;
+  acessoExpirado: 'TRIAL' | 'ASSINATURA' | null;
+  precos: { STARTER: number; PRO: number };
+  /** false enquanto o Mercado Pago não estiver configurado no servidor. */
+  pagamentoDisponivel: boolean;
 }

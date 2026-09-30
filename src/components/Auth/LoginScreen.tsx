@@ -5,6 +5,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { ErroApi, loginAdmin } from '@/services/apiService';
 import { AuthLayout } from './AuthLayout';
 import { AuthInput } from './AuthInput';
+import { AuthCheckbox } from './AuthCheckbox';
 import { IconeEmail, IconeSenha } from './icones';
 
 const CHAVE_EMAIL_LEMBRADO = 'tc-login-email-lembrado';
@@ -93,15 +94,9 @@ export function LoginScreen() {
           alternarVisibilidade
         />
 
-        <label className="flex items-center gap-2 text-sm text-ink-400">
-          <input
-            type="checkbox"
-            checked={lembrar}
-            onChange={(e) => setLembrar(e.target.checked)}
-            className="h-3.5 w-3.5 accent-tenant"
-          />
+        <AuthCheckbox checked={lembrar} onChange={(e) => setLembrar(e.target.checked)}>
           Lembrar meu e-mail neste dispositivo
-        </label>
+        </AuthCheckbox>
 
         <button
           type="submit"

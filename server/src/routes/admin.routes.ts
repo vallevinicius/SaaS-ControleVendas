@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { assinarTokenAdmin, requirePlatformAdmin } from '../middleware/auth.js';
 import { calcularTrialExpiraEm } from '../config/planos.js';
+import { cpfValido, normalizarCnpj } from '../lib/documentos.js';
+import { operacoesExcluirLojas, usuarioComHistoricoEmOutraLoja } from '../lib/exclusao.js';
 
 export const adminRouter = Router();
 
@@ -45,12 +47,28 @@ adminRouter.get('/empresas', async (_req, res) => {
         include: {
           usuarios: {
             orderBy: { nome: 'asc' },
-            select: { id: true, nome: true, email: true, papel: true, ativo: true, criadoEm: true },
+            select: { id: true, nome: true, email: true, cpf: true, telefone: true, papel: true, raiz: true, ativo: true, criadoEm: true },
           },
         },
       },
     },
   });
+
+  // Indicadores de uso de cada loja (produtos ativos e vendas do mês).
+  const idsLojas = empresas.flatMap((e) => e.lojas.map((l) => l.id));
+  const inicioDoMes = new Date();
+  inicioDoMes.setDate(1);
+  inicioDoMes.setHours(0, 0, 0, 0);
+  const [produtos, vendas] = await Promise.all([
+    prisma.produto.groupBy({ by: ['tenantId'], where: { tenantId: { in: idsLojas }, ativo: true }, _count: { _all: true } }),
+    prisma.transacao.groupBy({
+      by: ['tenantId'],
+      where: { tenantId: { in: idsLojas }, tipo: 'SAIDA', timestamp: { gte: inicioDoMes } },
+      _sum: { valorTotal: true },
+      _count: { _all: true },
+      _max: { timestamp: true },
+    }),
+  ]);
 
   res.json(
     empresas.map((e) => ({
@@ -58,37 +76,83 @@ adminRouter.get('/empresas', async (_req, res) => {
       nome: e.nome,
       planoAtual: e.planoAtual,
       trialExpiraEm: e.trialExpiraEm?.toISOString() ?? undefined,
+      assinatura: {
+        status: e.assinaturaStatus,
+        acessoAte: e.acessoAte?.toISOString() ?? undefined,
+        canceladaEm: e.canceladaEm?.toISOString() ?? undefined,
+      },
       ativo: e.ativo,
       criadoEm: e.criadoEm.toISOString(),
-      lojas: e.lojas.map((t) => ({
-        id: t.id,
-        nomeFantasia: t.nomeFantasia,
-        razaoSocial: t.razaoSocial ?? undefined,
-        cnpj: t.cnpj,
-        telefone: t.telefone ?? undefined,
-        email: t.email ?? undefined,
-        criadoEm: t.criadoEm.toISOString(),
-        usuarios: t.usuarios.map((u) => ({
-          id: u.id,
-          nome: u.nome,
-          email: u.email,
-          papel: u.papel,
-          ativo: u.ativo,
-          criadoEm: u.criadoEm.toISOString(),
-        })),
-      })),
+      lojas: e.lojas.map((t) => {
+        const v = vendas.find((x) => x.tenantId === t.id);
+        return {
+          id: t.id,
+          nomeFantasia: t.nomeFantasia,
+          razaoSocial: t.razaoSocial ?? undefined,
+          cnpj: t.cnpj,
+          telefone: t.telefone ?? undefined,
+          email: t.email ?? undefined,
+          site: t.site ?? undefined,
+          inscricaoEstadual: t.inscricaoEstadual ?? undefined,
+          inscricaoMunicipal: t.inscricaoMunicipal ?? undefined,
+          regimeTributario: t.regimeTributario ?? undefined,
+          endereco: {
+            cep: t.cep ?? undefined,
+            logradouro: t.logradouro ?? undefined,
+            numero: t.numero ?? undefined,
+            complemento: t.complemento ?? undefined,
+            bairro: t.bairro ?? undefined,
+            cidade: t.cidade ?? undefined,
+            uf: t.uf ?? undefined,
+          },
+          ativo: t.ativo,
+          criadoEm: t.criadoEm.toISOString(),
+          indicadores: {
+            produtos: produtos.find((x) => x.tenantId === t.id)?._count._all ?? 0,
+            vendasDoMes: v?._count._all ?? 0,
+            faturamentoDoMes: Number(v?._sum.valorTotal ?? 0),
+            ultimaVenda: v?._max.timestamp?.toISOString() ?? undefined,
+          },
+          usuarios: t.usuarios.map((u) => ({
+            id: u.id,
+            nome: u.nome,
+            email: u.email,
+            cpf: u.cpf ?? undefined,
+            telefone: u.telefone ?? undefined,
+            papel: u.papel,
+            raiz: u.raiz,
+            ativo: u.ativo,
+            criadoEm: u.criadoEm.toISOString(),
+          })),
+        };
+      }),
     })),
   );
 });
 
+const textoOpcional = z.string().trim().max(191).optional();
+
 const novaEmpresaSchema = z.object({
   nomeFantasia: z.string().min(2),
-  razaoSocial: z.string().optional(),
+  razaoSocial: textoOpcional,
   cnpj: z.string().min(1),
+  inscricaoEstadual: textoOpcional,
+  inscricaoMunicipal: textoOpcional,
+  regimeTributario: textoOpcional,
   telefone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
+  site: textoOpcional,
+  cep: textoOpcional,
+  logradouro: textoOpcional,
+  numero: textoOpcional,
+  complemento: textoOpcional,
+  bairro: textoOpcional,
+  cidade: textoOpcional,
+  uf: z.string().trim().length(2).optional().or(z.literal('')),
   planoAtual: z.enum(['FREE', 'STARTER', 'PRO', 'ENTERPRISE']).default('FREE'),
   nomeAdmin: z.string().min(2),
+  cpfAdmin: textoOpcional,
+  telefoneAdmin: textoOpcional,
   emailAdmin: z.string().email(),
   senhaAdmin: z.string().min(6),
 });
@@ -98,9 +162,13 @@ adminRouter.post('/empresas', async (req, res) => {
   if (!parse.success) {
     return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
   }
-  const { nomeFantasia, razaoSocial, cnpj, telefone, email, planoAtual, nomeAdmin, emailAdmin, senhaAdmin } = parse.data;
+  const d = parse.data;
 
-  const emailExistente = await prisma.usuario.findUnique({ where: { email: emailAdmin } });
+  const cnpj = normalizarCnpj(d.cnpj);
+  if (!cnpj) return res.status(400).json({ erro: 'CNPJ inválido. Confira os números.' });
+  if (d.cpfAdmin && !cpfValido(d.cpfAdmin)) return res.status(400).json({ erro: 'CPF do responsável inválido.' });
+
+  const emailExistente = await prisma.usuario.findUnique({ where: { email: d.emailAdmin } });
   if (emailExistente) {
     return res.status(409).json({ erro: 'Já existe uma conta com este e-mail.' });
   }
@@ -109,33 +177,46 @@ adminRouter.post('/empresas', async (req, res) => {
     return res.status(409).json({ erro: 'Já existe uma loja cadastrada com este CNPJ.' });
   }
 
-  const senhaHash = await bcrypt.hash(senhaAdmin, 10);
+  const senhaHash = await bcrypt.hash(d.senhaAdmin, 10);
 
   const empresa = await prisma.$transaction(async (tx) => {
     const empresa = await tx.empresa.create({
       data: {
-        nome: nomeFantasia,
-        planoAtual,
-        trialExpiraEm: planoAtual === 'FREE' ? calcularTrialExpiraEm() : undefined,
+        nome: d.nomeFantasia,
+        planoAtual: d.planoAtual,
+        trialExpiraEm: d.planoAtual === 'FREE' ? calcularTrialExpiraEm() : undefined,
       },
     });
     const tenant = await tx.tenant.create({
       data: {
         empresaId: empresa.id,
-        nomeFantasia,
-        razaoSocial,
+        nomeFantasia: d.nomeFantasia,
+        razaoSocial: d.razaoSocial || undefined,
         cnpj,
-        telefone: telefone || undefined,
-        email: email || undefined,
-        logoDaLojaUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nomeFantasia)}&backgroundType=gradientLinear`,
+        inscricaoEstadual: d.inscricaoEstadual || undefined,
+        inscricaoMunicipal: d.inscricaoMunicipal || undefined,
+        regimeTributario: d.regimeTributario || undefined,
+        telefone: d.telefone || undefined,
+        email: d.email || undefined,
+        site: d.site || undefined,
+        cep: d.cep || undefined,
+        logradouro: d.logradouro || undefined,
+        numero: d.numero || undefined,
+        complemento: d.complemento || undefined,
+        bairro: d.bairro || undefined,
+        cidade: d.cidade || undefined,
+        uf: d.uf || undefined,
+        logoDaLojaUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(d.nomeFantasia)}&backgroundType=gradientLinear`,
         corPrincipalDoTema: '#10B981',
       },
     });
     await tx.usuario.create({
       data: {
         tenantId: tenant.id,
-        nome: nomeAdmin,
-        email: emailAdmin,
+        nome: d.nomeAdmin,
+        cpf: d.cpfAdmin || undefined,
+        telefone: d.telefoneAdmin || undefined,
+        email: d.emailAdmin,
         senhaHash,
         papel: 'ADMIN',
         raiz: true,
@@ -172,22 +253,55 @@ adminRouter.delete('/empresas/:id', async (req, res) => {
 
   const tenantIds = empresa.lojas.map((t) => t.id);
 
-  // Ordem explícita (em vez de confiar em cascade do banco): itens de
-  // transação e transações primeiro, depois produtos (que dependem delas),
-  // depois categorias (que dependem dos produtos), e o resto por último.
-  await prisma.$transaction([
-    prisma.itemTransacao.deleteMany({ where: { transacao: { tenantId: { in: tenantIds } } } }),
-    prisma.transacao.deleteMany({ where: { tenantId: { in: tenantIds } } }),
-    prisma.produto.deleteMany({ where: { tenantId: { in: tenantIds } } }),
-    prisma.categoria.deleteMany({ where: { tenantId: { in: tenantIds } } }),
-    prisma.lancamentoFinanceiro.deleteMany({ where: { tenantId: { in: tenantIds } } }),
-    prisma.cliente.deleteMany({ where: { tenantId: { in: tenantIds } } }),
-    prisma.acessoLoja.deleteMany({ where: { tenantId: { in: tenantIds } } }),
-    prisma.usuario.deleteMany({ where: { tenantId: { in: tenantIds } } }),
-    prisma.tenant.deleteMany({ where: { id: { in: tenantIds } } }),
-    prisma.empresa.delete({ where: { id: empresa.id } }),
-  ]);
+  // Todas as lojas saem juntas, então nenhum usuário fica com histórico
+  // "pendurado" em loja de fora. Ordem em lib/exclusao.ts.
+  await prisma.$transaction([...operacoesExcluirLojas(tenantIds), prisma.empresa.delete({ where: { id: empresa.id } })]);
 
+  res.status(204).send();
+});
+
+const lojaAtivoSchema = z.object({ ativo: z.boolean() });
+
+/** Desativa/reativa uma loja específica (a empresa segue ativa). */
+adminRouter.put('/lojas/:id/ativo', async (req, res) => {
+  const parse = lojaAtivoSchema.safeParse(req.body);
+  if (!parse.success) return res.status(400).json({ erro: 'Valor inválido.' });
+
+  const loja = await prisma.tenant.findUnique({ where: { id: req.params.id } });
+  if (!loja) return res.status(404).json({ erro: 'Loja não encontrada.' });
+
+  if (!parse.data.ativo) {
+    const outrasAtivas = await prisma.tenant.count({
+      where: { empresaId: loja.empresaId, ativo: true, id: { not: loja.id } },
+    });
+    if (outrasAtivas === 0) {
+      return res.status(409).json({ erro: 'Esta é a única loja ativa da empresa. Para bloquear o acesso, suspenda a empresa.' });
+    }
+  }
+
+  const atualizada = await prisma.tenant.update({ where: { id: loja.id }, data: { ativo: parse.data.ativo } });
+  res.json({ id: atualizada.id, ativo: atualizada.ativo });
+});
+
+/** Exclusão definitiva de uma loja (LGPD). A última loja de uma empresa não
+ * sai por aqui: aí é a empresa inteira que deve ser excluída. */
+adminRouter.delete('/lojas/:id', async (req, res) => {
+  const loja = await prisma.tenant.findUnique({ where: { id: req.params.id } });
+  if (!loja) return res.status(404).json({ erro: 'Loja não encontrada.' });
+
+  const total = await prisma.tenant.count({ where: { empresaId: loja.empresaId } });
+  if (total <= 1) {
+    return res.status(409).json({ erro: 'Esta é a única loja da empresa. Exclua a empresa inteira.' });
+  }
+
+  const comHistorico = await usuarioComHistoricoEmOutraLoja([loja.id]);
+  if (comHistorico) {
+    return res.status(409).json({
+      erro: `${comHistorico} tem movimentações em outra loja e não pode ser apagado junto. Desative esse usuário e tente de novo.`,
+    });
+  }
+
+  await prisma.$transaction(operacoesExcluirLojas([loja.id]));
   res.status(204).send();
 });
 

@@ -21,6 +21,11 @@ import type {
   Usuario,
   Vendedor,
   VendaResumo,
+  EmpresaAdmin,
+  LojaGestao,
+  AcessoDaLoja,
+  UsuarioDaEmpresa,
+  AssinaturaResumo,
   FormaPagamento,
   AtributoCustomizadoDefinicao,
   AtributoCustomizadoValor,
@@ -103,10 +108,24 @@ export async function login(email: string, senha: string): Promise<void> {
 
 export interface RegistrarLojaPayload {
   nomeFantasia: string;
+  razaoSocial: string;
   cnpj: string;
+  inscricaoEstadual?: string;
+  inscricaoMunicipal?: string;
+  regimeTributario?: string;
   telefone?: string;
   emailContato?: string;
+  site?: string;
+  cep?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
   nomeAdmin: string;
+  cpfAdmin?: string;
+  telefoneAdmin?: string;
   email: string;
   senha: string;
 }
@@ -130,9 +149,8 @@ export function logout(): void {
 // ----------------------------------------------------------------------------
 // ADMIN DA PLATAFORMA (Total Software)
 // ----------------------------------------------------------------------------
-// Sessão separada da loja — chave própria no localStorage. A gestão de
-// empresas/lojas em si acontece no TotalControl (totalSoftwareAdmin); aqui só
-// autentica pra decidir se manda o usuário pra lá (ver AdminScreen.tsx).
+// Sessão separada da loja — chave própria no localStorage. O painel /admin
+// (src/components/Admin) usa essas funções pra gerir empresas, lojas e logins.
 
 const CHAVE_TOKEN_ADMIN = 'total_control_admin_token';
 
@@ -166,6 +184,96 @@ export async function loginAdmin(email: string, senha: string): Promise<void> {
   localStorage.setItem(CHAVE_TOKEN_ADMIN, token);
 }
 
+async function requisitarAdmin<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
+  const token = getAdminToken();
+  const resposta = await fetch(`${API_URL}/admin${caminho}`, {
+    ...opcoes,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opcoes.headers,
+    },
+  });
+
+  if (!resposta.ok) {
+    let mensagem = `Erro ${resposta.status} ao chamar ${caminho}`;
+    try {
+      const corpo = await resposta.json();
+      if (corpo?.erro) mensagem = corpo.erro;
+    } catch {
+      // corpo sem JSON — mantém mensagem genérica
+    }
+    throw new ErroApi(mensagem, resposta.status);
+  }
+
+  if (resposta.status === 204) return undefined as T;
+  return resposta.json() as Promise<T>;
+}
+
+export function adminListarEmpresas(): Promise<EmpresaAdmin[]> {
+  return requisitarAdmin('/empresas');
+}
+
+export interface NovaEmpresaAdminPayload {
+  nomeFantasia: string;
+  razaoSocial?: string;
+  cnpj: string;
+  inscricaoEstadual?: string;
+  inscricaoMunicipal?: string;
+  regimeTributario?: string;
+  telefone?: string;
+  email?: string;
+  site?: string;
+  cep?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+  planoAtual: EmpresaAdmin['planoAtual'];
+  nomeAdmin: string;
+  cpfAdmin?: string;
+  telefoneAdmin?: string;
+  emailAdmin: string;
+  senhaAdmin: string;
+}
+
+export function adminCriarEmpresa(dados: NovaEmpresaAdminPayload): Promise<{ id: string; nome: string }> {
+  return requisitarAdmin('/empresas', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export function adminDefinirPlano(empresaId: string, planoAtual: EmpresaAdmin['planoAtual']): Promise<void> {
+  return requisitarAdmin(`/empresas/${empresaId}/plano`, { method: 'PUT', body: JSON.stringify({ planoAtual }) });
+}
+
+export function adminDefinirEmpresaAtiva(empresaId: string, ativo: boolean): Promise<void> {
+  return requisitarAdmin(`/empresas/${empresaId}/ativo`, { method: 'PUT', body: JSON.stringify({ ativo }) });
+}
+
+export function adminExcluirEmpresa(empresaId: string): Promise<void> {
+  return requisitarAdmin(`/empresas/${empresaId}`, { method: 'DELETE' });
+}
+
+export function adminDefinirLojaAtiva(lojaId: string, ativo: boolean): Promise<void> {
+  return requisitarAdmin(`/lojas/${lojaId}/ativo`, { method: 'PUT', body: JSON.stringify({ ativo }) });
+}
+
+export function adminExcluirLoja(lojaId: string): Promise<void> {
+  return requisitarAdmin(`/lojas/${lojaId}`, { method: 'DELETE' });
+}
+
+export function adminDefinirUsuarioAtivo(usuarioId: string, ativo: boolean): Promise<void> {
+  return requisitarAdmin(`/usuarios/${usuarioId}/ativo`, { method: 'PUT', body: JSON.stringify({ ativo }) });
+}
+
+export async function adminResetarSenha(usuarioId: string): Promise<string> {
+  const { senhaTemporaria } = await requisitarAdmin<{ senhaTemporaria: string }>(`/usuarios/${usuarioId}/resetar-senha`, {
+    method: 'POST',
+  });
+  return senhaTemporaria;
+}
+
 /** Reemite o token pra outra loja que o usuário tem acesso (ver `lojas` em getMe). */
 export async function trocarLoja(tenantId: string): Promise<void> {
   const { token } = await requisitar<{ token: string }>('/auth/trocar-loja', {
@@ -175,14 +283,87 @@ export async function trocarLoja(tenantId: string): Promise<void> {
   setToken(token);
 }
 
-export interface NovaLojaPayload {
+/** Dados cadastrais de uma loja (criação e edição). Na edição, campo de texto
+ * vazio apaga o valor; na criação, vazio é ignorado. */
+export interface DadosLojaPayload {
   nomeFantasia: string;
+  razaoSocial?: string;
   cnpj: string;
+  inscricaoEstadual?: string;
+  inscricaoMunicipal?: string;
+  regimeTributario?: string;
+  telefone?: string;
+  email?: string;
+  site?: string;
+  cep?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+}
+
+export interface EdicaoLojaPayload extends DadosLojaPayload {
+  razaoSocial: string;
+  fusoHorario?: string;
+  exigirSenhaAoAbrirCaixa?: boolean;
 }
 
 /** Criação self-service de uma loja adicional pra mesma empresa — só ENTERPRISE. */
-export async function criarLoja(dados: NovaLojaPayload): Promise<{ id: string; nomeFantasia: string }> {
+export async function criarLoja(dados: DadosLojaPayload): Promise<{ id: string; nomeFantasia: string }> {
   return requisitar('/lojas', { method: 'POST', body: JSON.stringify(dados) });
+}
+
+export async function listarLojas(): Promise<LojaGestao[]> {
+  return requisitar('/lojas');
+}
+
+export async function editarLoja(id: string, dados: EdicaoLojaPayload): Promise<void> {
+  await requisitar(`/lojas/${id}`, { method: 'PUT', body: JSON.stringify(dados) });
+}
+
+export async function definirLojaAtiva(id: string, ativo: boolean): Promise<void> {
+  await requisitar(`/lojas/${id}/ativo`, { method: 'PATCH', body: JSON.stringify({ ativo }) });
+}
+
+/** Exclusão definitiva (LGPD): exige a senha de quem pede e o CNPJ da loja. */
+export async function excluirLoja(id: string, confirmacao: { senha: string; cnpj: string }): Promise<void> {
+  await requisitar(`/lojas/${id}`, { method: 'DELETE', body: JSON.stringify(confirmacao) });
+}
+
+export async function listarAcessosLoja(id: string): Promise<AcessoDaLoja[]> {
+  return requisitar(`/lojas/${id}/acessos`);
+}
+
+export async function revogarAcessoLoja(tenantId: string, usuarioId: string): Promise<void> {
+  await requisitar(`/lojas/${tenantId}/acessos/${usuarioId}`, { method: 'DELETE' });
+}
+
+export async function listarUsuariosDaEmpresa(): Promise<UsuarioDaEmpresa[]> {
+  return requisitar('/lojas/usuarios');
+}
+
+// ----------------------------------------------------------------------------
+// ASSINATURA (Mercado Pago) — tela Meu plano
+// ----------------------------------------------------------------------------
+
+export async function getAssinatura(): Promise<AssinaturaResumo> {
+  return requisitar('/assinatura');
+}
+
+/** Atualiza o estado direto no Mercado Pago (usado ao voltar do checkout). */
+export async function sincronizarAssinatura(): Promise<AssinaturaResumo> {
+  return requisitar('/assinatura/sincronizar', { method: 'POST' });
+}
+
+/** Cria a assinatura e devolve o link do checkout do Mercado Pago. */
+export async function iniciarCheckoutAssinatura(plano: 'STARTER' | 'PRO'): Promise<{ url: string }> {
+  return requisitar('/assinatura/checkout', { method: 'POST', body: JSON.stringify({ plano }) });
+}
+
+export async function cancelarAssinatura(): Promise<AssinaturaResumo> {
+  return requisitar('/assinatura/cancelar', { method: 'POST' });
 }
 
 // ----------------------------------------------------------------------------

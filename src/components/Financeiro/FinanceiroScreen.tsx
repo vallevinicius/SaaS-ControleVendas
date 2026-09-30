@@ -1,48 +1,38 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AppLayout } from '@/components/Layout/AppLayout';
 import { LoadingState } from '@/components/Common/LoadingState';
 import { useTenant } from '@/contexts/TenantContext';
-import { useToast } from '@/contexts/ToastContext';
-import { useConfirm } from '@/contexts/ConfirmContext';
-import { getResumoFinanceiro, getLancamentos, createLancamento, deleteLancamento } from '@/services/apiService';
+import { getResumoFinanceiro, getLancamentos } from '@/services/apiService';
 import { formatarMoeda, formatarDataHora } from '@/utils/formatters';
-import type { LancamentoFinanceiro, ResumoFinanceiro, TipoLancamentoFinanceiro } from '@/types';
+import type { LancamentoFinanceiro, ResumoFinanceiro } from '@/types';
+import { FiltroPeriodo, hoje, inicioDoMesAtual } from './FiltroPeriodo';
 
-function inicioDoMesAtual(): string {
-  const agora = new Date();
-  return new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().slice(0, 10);
+function Cartao({ rotulo, valor, tom, destaque }: { rotulo: string; valor: string; tom?: 'verde' | 'vermelho'; destaque?: boolean }) {
+  const cor = destaque ? 'text-tenant' : tom === 'verde' ? 'text-emerald-400' : tom === 'vermelho' ? 'text-red-400' : 'text-ink-100';
+  return (
+    <div className={['rounded-xl border p-5', destaque ? 'border-tenant bg-tenant-soft' : 'border-ink-700 bg-ink-800'].join(' ')}>
+      <p className={['text-xs font-medium uppercase tracking-wide', destaque ? 'text-ink-300' : 'text-ink-400'].join(' ')}>{rotulo}</p>
+      <p className={['mt-2 font-display text-xl font-semibold', cor].join(' ')}>{valor}</p>
+    </div>
+  );
 }
 
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
+/** Financeiro > Visão geral: números do período e os últimos lançamentos. A
+ * lista completa (e o formulário de novo lançamento) fica em "Lançamentos". */
 export function FinanceiroScreen() {
   const { tenant } = useTenant();
-  const toast = useToast();
-  const confirmar = useConfirm();
   const [inicio, setInicio] = useState(inicioDoMesAtual());
   const [fim, setFim] = useState(hoje());
   const [resumo, setResumo] = useState<ResumoFinanceiro | null>(null);
-  const [lancamentos, setLancamentos] = useState<LancamentoFinanceiro[]>([]);
+  const [recentes, setRecentes] = useState<LancamentoFinanceiro[]>([]);
   const [carregando, setCarregando] = useState(true);
-
-  const [mostrarFormulario, setMostrarFormulario] = useState(false);
-  const [tipo, setTipo] = useState<TipoLancamentoFinanceiro>('DESPESA');
-  const [categoria, setCategoria] = useState('');
-  const [descricao, setDescricao] = useState('');
-  const [valor, setValor] = useState<number>(0);
-  const [data, setData] = useState(hoje());
-  const [enviando, setEnviando] = useState(false);
 
   async function carregar() {
     setCarregando(true);
-    const [resumoCarregado, lancamentosCarregados] = await Promise.all([
-      getResumoFinanceiro(inicio, fim),
-      getLancamentos(inicio, fim),
-    ]);
+    const [resumoCarregado, lancamentos] = await Promise.all([getResumoFinanceiro(inicio, fim), getLancamentos(inicio, fim)]);
     setResumo(resumoCarregado);
-    setLancamentos(lancamentosCarregados);
+    setRecentes(lancamentos.slice(0, 5));
     setCarregando(false);
   }
 
@@ -51,237 +41,62 @@ export function FinanceiroScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!categoria.trim() || valor <= 0) return;
-    setEnviando(true);
-    try {
-      await createLancamento({ tipo, categoria: categoria.trim(), descricao: descricao || undefined, valor, data });
-      toast.sucesso(`${tipo === 'RECEITA' ? 'Receita' : 'Despesa'} lançada.`);
-      setCategoria('');
-      setDescricao('');
-      setValor(0);
-      setMostrarFormulario(false);
-      await carregar();
-    } catch (err) {
-      toast.erro(err instanceof Error ? err.message : 'Erro ao lançar.');
-    } finally {
-      setEnviando(false);
-    }
-  }
-
-  async function handleExcluir(lancamento: LancamentoFinanceiro) {
-    const confirmou = await confirmar({
-      titulo: `Excluir lançamento "${lancamento.categoria}"?`,
-      textoConfirmar: 'Excluir',
-      perigoso: true,
-    });
-    if (!confirmou) return;
-
-    try {
-      await deleteLancamento(lancamento.id);
-      await carregar();
-      toast.sucesso('Lançamento excluído.');
-    } catch (err) {
-      toast.erro(err instanceof Error ? err.message : 'Erro ao excluir lançamento.');
-    }
-  }
+  const entradas = resumo ? resumo.receitaVendas + resumo.receitasAvulsas : 0;
+  const saidas = resumo ? resumo.custoEstoque + resumo.despesasAvulsas : 0;
+  const percentualEntradas = entradas + saidas > 0 ? (entradas / (entradas + saidas)) * 100 : 50;
 
   return (
-    <AppLayout titulo="Financeiro" subtitulo="Fluxo de caixa e lançamentos avulsos">
-      <div className="mb-6 flex items-end gap-4 rounded-xl border border-ink-700 bg-ink-800 p-4">
-        <label className="block text-sm text-ink-300">
-          De
-          <input
-            type="date"
-            value={inicio}
-            onChange={(e) => setInicio(e.target.value)}
-            className="mt-1 rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
-          />
-        </label>
-        <label className="block text-sm text-ink-300">
-          Até
-          <input
-            type="date"
-            value={fim}
-            onChange={(e) => setFim(e.target.value)}
-            className="mt-1 rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
-          />
-        </label>
-        <button onClick={carregar} className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90">
-          Filtrar
-        </button>
-        <button
-          onClick={() => setMostrarFormulario((atual) => !atual)}
-          className="ml-auto rounded-lg border border-ink-600 px-4 py-2 text-sm font-medium text-ink-200 hover:border-tenant hover:text-tenant"
-        >
-          {mostrarFormulario ? 'Cancelar' : '+ Novo lançamento'}
-        </button>
-      </div>
-
-      {mostrarFormulario && (
-        <form onSubmit={handleSubmit} className="mb-6 grid grid-cols-5 gap-4 rounded-xl border border-ink-700 bg-ink-800 p-6">
-          <div className="text-sm text-ink-300">
-            Tipo
-            <div className="mt-1 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setTipo('DESPESA')}
-                className={[
-                  'flex-1 rounded-lg border px-3 py-2 text-xs font-medium',
-                  tipo === 'DESPESA' ? 'border-red-400 bg-red-500/15 text-red-400' : 'border-ink-600 text-ink-300',
-                ].join(' ')}
-              >
-                Despesa
-              </button>
-              <button
-                type="button"
-                onClick={() => setTipo('RECEITA')}
-                className={[
-                  'flex-1 rounded-lg border px-3 py-2 text-xs font-medium',
-                  tipo === 'RECEITA' ? 'border-emerald-400 bg-emerald-500/15 text-emerald-400' : 'border-ink-600 text-ink-300',
-                ].join(' ')}
-              >
-                Receita
-              </button>
-            </div>
-          </div>
-
-          <label className="block text-sm text-ink-300">
-            Categoria
-            <input
-              required
-              value={categoria}
-              onChange={(e) => setCategoria(e.target.value)}
-              placeholder="Aluguel, salário…"
-              className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 placeholder:text-ink-400 focus:border-tenant focus:outline-none"
-            />
-          </label>
-
-          <label className="block text-sm text-ink-300">
-            Descrição
-            <input
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
-            />
-          </label>
-
-          <label className="block text-sm text-ink-300">
-            Valor
-            <input
-              type="number"
-              min={0.01}
-              step={0.01}
-              value={valor === 0 ? '' : valor}
-              onChange={(e) => setValor(Number(e.target.value) || 0)}
-              className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
-            />
-          </label>
-
-          <label className="block text-sm text-ink-300">
-            Data
-            <input
-              type="date"
-              value={data}
-              onChange={(e) => setData(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
-            />
-          </label>
-
-          <div className="col-span-5 flex justify-end">
-            <button
-              type="submit"
-              disabled={enviando}
-              className="rounded-lg bg-tenant px-4 py-2 text-sm font-semibold text-tenant-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {enviando ? 'Salvando…' : 'Salvar lançamento'}
-            </button>
-          </div>
-        </form>
-      )}
+    <AppLayout titulo="Financeiro" subtitulo="Visão geral do fluxo de caixa">
+      <FiltroPeriodo inicio={inicio} fim={fim} onInicio={setInicio} onFim={setFim} onFiltrar={carregar} />
 
       {carregando || !resumo ? (
         <LoadingState mensagem="Calculando o financeiro…" />
       ) : (
         <div className="space-y-6">
-          <div className="grid grid-cols-5 gap-4">
-            <div className="rounded-xl border border-ink-700 bg-ink-800 p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Receita de vendas</p>
-              <p className="mt-2 font-display text-xl font-semibold text-emerald-400">
-                {formatarMoeda(resumo.receitaVendas, tenant)}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+            <Cartao rotulo="Receita de vendas" valor={formatarMoeda(resumo.receitaVendas, tenant)} tom="verde" />
+            <Cartao rotulo="Custo de estoque" valor={formatarMoeda(resumo.custoEstoque, tenant)} tom="vermelho" />
+            <Cartao rotulo="Receitas avulsas" valor={formatarMoeda(resumo.receitasAvulsas, tenant)} tom="verde" />
+            <Cartao rotulo="Despesas avulsas" valor={formatarMoeda(resumo.despesasAvulsas, tenant)} tom="vermelho" />
+            <Cartao rotulo="Saldo do período" valor={formatarMoeda(resumo.saldo, tenant)} destaque />
+          </div>
+
+          <div className="rounded-xl border border-ink-700 bg-ink-800 p-5">
+            <div className="flex items-center justify-between text-sm">
+              <p className="font-medium text-ink-100">Entradas x saídas</p>
+              <p className="text-ink-400">
+                {formatarMoeda(entradas, tenant)} entrou · {formatarMoeda(saidas, tenant)} saiu
               </p>
             </div>
-            <div className="rounded-xl border border-ink-700 bg-ink-800 p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Custo de estoque</p>
-              <p className="mt-2 font-display text-xl font-semibold text-red-400">
-                {formatarMoeda(resumo.custoEstoque, tenant)}
-              </p>
-            </div>
-            <div className="rounded-xl border border-ink-700 bg-ink-800 p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Receitas avulsas</p>
-              <p className="mt-2 font-display text-xl font-semibold text-emerald-400">
-                {formatarMoeda(resumo.receitasAvulsas, tenant)}
-              </p>
-            </div>
-            <div className="rounded-xl border border-ink-700 bg-ink-800 p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Despesas avulsas</p>
-              <p className="mt-2 font-display text-xl font-semibold text-red-400">
-                {formatarMoeda(resumo.despesasAvulsas, tenant)}
-              </p>
-            </div>
-            <div className="rounded-xl border border-tenant bg-tenant-soft p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-300">Saldo do período</p>
-              <p className="mt-2 font-display text-xl font-semibold text-tenant">{formatarMoeda(resumo.saldo, tenant)}</p>
+            <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-red-500/40">
+              <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${percentualEntradas}%` }} />
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-ink-700">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-ink-800 text-xs uppercase tracking-wide text-ink-400">
-                <tr>
-                  <th className="px-5 py-3 font-medium">Data</th>
-                  <th className="px-5 py-3 font-medium">Tipo</th>
-                  <th className="px-5 py-3 font-medium">Categoria</th>
-                  <th className="px-5 py-3 font-medium">Descrição</th>
-                  <th className="px-5 py-3 font-medium text-right">Valor</th>
-                  <th className="px-5 py-3 font-medium text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-700 bg-ink-800/40">
-                {lancamentos.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-6 text-center text-ink-400">
-                      Nenhum lançamento avulso no período selecionado.
-                    </td>
-                  </tr>
-                ) : (
-                  lancamentos.map((l) => (
-                    <tr key={l.id} className="transition-colors hover:bg-ink-800">
-                      <td className="px-5 py-3.5 text-ink-300">{formatarDataHora(l.data, tenant)}</td>
-                      <td className="px-5 py-3.5">
-                        <span
-                          className={[
-                            'rounded-full px-2.5 py-1 text-xs font-medium',
-                            l.tipo === 'RECEITA' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400',
-                          ].join(' ')}
-                        >
-                          {l.tipo === 'RECEITA' ? 'Receita' : 'Despesa'}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-ink-100">{l.categoria}</td>
-                      <td className="px-5 py-3.5 text-ink-300">{l.descricao ?? '|'}</td>
-                      <td className="px-5 py-3.5 text-right font-mono text-ink-100">{formatarMoeda(l.valor, tenant)}</td>
-                      <td className="px-5 py-3.5 text-right">
-                        <button onClick={() => handleExcluir(l)} className="text-xs text-ink-400 hover:text-red-400">
-                          Excluir
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <div className="overflow-hidden rounded-xl border border-ink-700 bg-ink-800/40">
+            <div className="flex items-center justify-between border-b border-ink-700 bg-ink-800 px-5 py-3.5">
+              <p className="font-display text-sm font-semibold text-ink-100">Últimos lançamentos</p>
+              <Link to="/financeiro/lancamentos" className="text-xs font-medium text-tenant hover:underline">
+                Ver todos
+              </Link>
+            </div>
+            {recentes.length === 0 ? (
+              <p className="px-5 py-6 text-center text-sm text-ink-400">Nenhum lançamento avulso no período selecionado.</p>
+            ) : (
+              <ul className="divide-y divide-ink-700">
+                {recentes.map((l) => (
+                  <li key={l.id} className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate text-ink-100">{l.categoria}</p>
+                      <p className="text-xs text-ink-500">{formatarDataHora(l.data, tenant)}</p>
+                    </div>
+                    <p className={['font-mono', l.tipo === 'RECEITA' ? 'text-emerald-400' : 'text-red-400'].join(' ')}>
+                      {l.tipo === 'RECEITA' ? '+' : '-'} {formatarMoeda(l.valor, tenant)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       )}

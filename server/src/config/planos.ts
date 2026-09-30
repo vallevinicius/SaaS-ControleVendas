@@ -43,3 +43,33 @@ export function calcularTrialExpiraEm(): Date {
   data.setDate(data.getDate() + DIAS_TRIAL);
   return data;
 }
+
+/** Preço mensal (R$) dos planos vendidos com assinatura automática pelo
+ * Mercado Pago. O Enterprise fica de fora de propósito: tem preço "a partir de"
+ * e cobrança por loja adicional, então é negociado com a equipe. Mantenha
+ * em sincronia com src/components/Marketing/LandingPricing.tsx. */
+export const PRECOS_MENSAIS = { STARTER: 59.9, PRO: 129.9 } as const;
+export type PlanoAssinavel = keyof typeof PRECOS_MENSAIS;
+
+export function planoAssinavel(valor: unknown): valor is PlanoAssinavel {
+  return valor === 'STARTER' || valor === 'PRO';
+}
+
+interface EmpresaParaAcesso {
+  trialExpiraEm: Date | null;
+  assinaturaStatus: string;
+  acessoAte: Date | null;
+}
+
+/** Por que o acesso da empresa acabou (ou null se está liberado):
+ * - TRIAL: o teste grátis terminou e não há assinatura ativa;
+ * - ASSINATURA: cancelou (ou a cobrança falhou) e o período já pago acabou.
+ * Nos dois casos o login continua funcionando, mas só a tela do plano abre,
+ * pra pessoa poder assinar de novo. */
+export function motivoAcessoExpirado(e: EmpresaParaAcesso, agora = new Date()): 'TRIAL' | 'ASSINATURA' | null {
+  if (e.assinaturaStatus === 'CANCELADA' || e.assinaturaStatus === 'PAUSADA') {
+    return !e.acessoAte || e.acessoAte < agora ? 'ASSINATURA' : null;
+  }
+  if (e.assinaturaStatus !== 'ATIVA' && e.trialExpiraEm && e.trialExpiraEm < agora) return 'TRIAL';
+  return null;
+}

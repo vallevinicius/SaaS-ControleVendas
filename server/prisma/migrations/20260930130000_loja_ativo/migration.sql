@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `Tenant` ADD COLUMN `ativo` BOOLEAN NOT NULL DEFAULT true;
