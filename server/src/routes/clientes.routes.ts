@@ -2,10 +2,11 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { lerPaginacao, montarResposta } from '../lib/paginacao.js';
 
 export const clientesRouter = Router();
-clientesRouter.use(requireAuth);
+clientesRouter.use(requireAuth, requerirTela(['clientes'], { leitura: ['pdv'] }));
 
 function serializarCliente(c: {
   id: string;

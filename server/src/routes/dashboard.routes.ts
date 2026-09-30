@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { contarProdutosComEstoqueBaixo } from '../lib/estoque.js';
 
 export const dashboardRouter = Router();
-dashboardRouter.use(requireAuth);
+dashboardRouter.use(requireAuth, requerirTela(['dashboard', 'estoque', 'pdv']));
 
 dashboardRouter.get('/resumo', async (req, res) => {
   const { tenantId } = req.usuario!;

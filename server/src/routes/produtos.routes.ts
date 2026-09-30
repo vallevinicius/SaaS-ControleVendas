@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { verificarLimiteRecurso } from '../middleware/plano.js';
 import { contarProdutosComEstoqueBaixo } from '../lib/estoque.js';
 import { lerPaginacao, montarResposta } from '../lib/paginacao.js';
@@ -9,7 +10,7 @@ import { registrarAuditoria } from '../lib/auditoria.js';
 import { LIMITES_POR_PLANO } from '../config/planos.js';
 
 export const produtosRouter = Router();
-produtosRouter.use(requireAuth);
+produtosRouter.use(requireAuth, requerirTela(['estoque'], { leitura: ['pdv'] }));
 
 function serializarProduto(p: {
   id: string;
@@ -75,7 +76,7 @@ produtosRouter.get('/', async (req, res) => {
  * quantidade baseada no ritmo de venda dos últimos 30 dias (o suficiente pra
  * cobrir mais 30 dias de venda, descontando o que já tem em estoque). Sem
  * histórico de venda, sugere só repor até o estoque mínimo. */
-produtosRouter.get('/sugestao-reposicao', async (req, res) => {
+produtosRouter.get('/sugestao-reposicao', requerirTela(['estoque']), async (req, res) => {
   const { tenantId } = req.usuario!;
 
   const produtos = await prisma.produto.findMany({ where: { tenantId, ativo: true } });

@@ -3,13 +3,15 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { verificarLimiteRecurso } from '../middleware/plano.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { mensagemDeValidacao, senhaForte } from '../lib/senha.js';
 
 type PapelUsuario = 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
 
 export const usuariosRouter = Router();
-usuariosRouter.use(requireAuth);
+usuariosRouter.use(requireAuth, requerirAdmin);
 
 const TELAS_VALIDAS = ['dashboard', 'pdv', 'estoque', 'financeiro', 'clientes', 'vendedores', 'relatorios'] as const;
 const permissoesSchema = z.array(z.enum(TELAS_VALIDAS));
@@ -47,7 +49,7 @@ usuariosRouter.get('/', async (req, res) => {
 const novoUsuarioSchema = z.object({
   nome: z.string().min(2),
   email: z.string().email(),
-  senha: z.string().min(6),
+  senha: senhaForte,
   papel: z.enum(['ADMIN', 'GERENTE', 'OPERADOR_CAIXA']),
   permissoes: permissoesSchema.optional(),
 });
@@ -60,7 +62,7 @@ usuariosRouter.post('/', async (req, res) => {
 
   const parse = novoUsuarioSchema.safeParse(req.body);
   if (!parse.success) {
-    return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
+    return res.status(400).json({ erro: mensagemDeValidacao(parse.error), detalhes: parse.error.flatten() });
   }
 
   const existente = await prisma.usuario.findUnique({ where: { email: parse.data.email } });

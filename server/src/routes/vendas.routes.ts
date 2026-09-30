@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { POLITICA_PDV } from '../config/planos.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
 
 const JANELA_DESFAZER_MS = 5 * 60 * 1000;
 
 export const vendasRouter = Router();
-vendasRouter.use(requireAuth);
+vendasRouter.use(requireAuth, requerirTela(['pdv']));
 
 function serializarTransacao(t: {
   id: string;
@@ -63,6 +65,7 @@ vendasRouter.get('/', async (req, res) => {
     where: { tenantId, tipo: 'SAIDA' },
     include: { itens: true },
     orderBy: { timestamp: 'desc' },
+    take: 200, // lista sem paginação: limita pra loja grande não travar a API
   });
   res.json(transacoes.map(serializarTransacao));
 });
@@ -88,7 +91,8 @@ const novaVendaSchema = z.object({
 });
 
 vendasRouter.post('/', async (req, res) => {
-  const { tenantId, id: usuarioId } = req.usuario!;
+  const { tenantId, id: usuarioId, papel } = req.usuario!;
+  const politica = POLITICA_PDV[papel];
   const parse = novaVendaSchema.safeParse(req.body);
   if (!parse.success) {
     return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
@@ -110,8 +114,10 @@ vendasRouter.post('/', async (req, res) => {
     if (existeVendedor) return res.status(400).json({ erro: 'Selecione o vendedor responsável pela venda.' });
   }
 
+  let auditoriaDoAjuste = '';
   try {
     const transacao = await prisma.$transaction(async (tx) => {
+      const ajustesDePreco: string[] = [];
       const itensResolvidos: Array<{
         productId: string;
         nomeProdutoSnapshot: string;
@@ -127,6 +133,13 @@ vendasRouter.post('/', async (req, res) => {
           throw new Error(`Estoque insuficiente para "${produto.nome}". Disponível: ${produto.quantidadeEmEstoque}.`);
         }
         const valorUnitario = item.precoUnitario ?? Number(produto.precoVenda);
+        // Preço diferente do cadastrado é ajuste manual: só gerente e admin.
+        if (Math.abs(valorUnitario - Number(produto.precoVenda)) > 0.004) {
+          if (!politica.podeAlterarPreco) {
+            throw new Error(`Seu perfil não pode alterar o preço de "${produto.nome}". Peça a um gerente.`);
+          }
+          ajustesDePreco.push(`${produto.nome}: ${Number(produto.precoVenda).toFixed(2)} -> ${valorUnitario.toFixed(2)}`);
+        }
         itensResolvidos.push({
           productId: produto.id,
           nomeProdutoSnapshot: produto.nome,
@@ -137,6 +150,15 @@ vendasRouter.post('/', async (req, res) => {
       }
 
       const valorBruto = itensResolvidos.reduce((acc, i) => acc + i.subtotal, 0);
+      if (desconto > valorBruto + 0.004) throw new Error('O desconto não pode ser maior que o valor da venda.');
+      const percentualDesconto = valorBruto > 0 ? (desconto / valorBruto) * 100 : 0;
+      if (percentualDesconto > politica.descontoMaximoPercentual + 0.004) {
+        throw new Error(`Seu perfil pode dar no máximo ${politica.descontoMaximoPercentual}% de desconto. Peça a um gerente.`);
+      }
+      auditoriaDoAjuste = [
+        desconto > 0 ? `desconto ${percentualDesconto.toFixed(1)}% (R$ ${desconto.toFixed(2)})` : '',
+        ...ajustesDePreco,
+      ].filter(Boolean).join('; ');
       const valorTotal = Number((valorBruto - desconto + taxas).toFixed(2));
 
       const novaTransacao = await tx.transacao.create({
@@ -157,15 +179,21 @@ vendasRouter.post('/', async (req, res) => {
         include: { itens: true },
       });
 
+      // Baixa condicional: só decrementa se ainda houver saldo no momento da
+      // escrita. Duas vendas simultâneas do mesmo item não deixam o estoque
+      // negativo (a checagem lá em cima é só pra mensagem amigável).
       for (const item of itensResolvidos) {
-        await tx.produto.update({
-          where: { id: item.productId },
+        const baixa = await tx.produto.updateMany({
+          where: { id: item.productId, tenantId, quantidadeEmEstoque: { gte: item.quantidade } },
           data: { quantidadeEmEstoque: { decrement: item.quantidade } },
         });
+        if (baixa.count === 0) throw new Error(`Estoque insuficiente para "${item.nomeProdutoSnapshot}".`);
       }
 
       return novaTransacao;
     });
+
+    if (auditoriaDoAjuste) await registrarAuditoria(tenantId, usuarioId, 'venda.ajuste', auditoriaDoAjuste);
 
     res.status(201).json(serializarTransacao(transacao));
   } catch (e) {

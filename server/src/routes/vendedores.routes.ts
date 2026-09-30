@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { requireFeaturePlano } from '../middleware/plano.js';
 import { requireContaPrincipal } from '../middleware/contaPrincipal.js';
 
 export const vendedoresRouter = Router();
-vendedoresRouter.use(requireAuth, requireFeaturePlano('vendedores'));
+vendedoresRouter.use(requireAuth, requerirTela(['vendedores'], { leitura: ['pdv'] }), requireFeaturePlano('vendedores'));
 
 // Gerenciar vendedores (criar/editar/desativar) é restrito à conta principal
 // da loja — outros logins (mesmo ADMIN) só podem listar, pra escolher o

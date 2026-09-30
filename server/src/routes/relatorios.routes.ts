@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { requireFeaturePlano } from '../middleware/plano.js';
 
 export const relatoriosRouter = Router();
-relatoriosRouter.use(requireAuth, requireFeaturePlano('relatorios'));
+relatoriosRouter.use(requireAuth, requerirTela(['relatorios']), requireFeaturePlano('relatorios'));
 
 /** Consolidado somando o faturamento de todas as lojas da empresa — só
  * ENTERPRISE (mesma feature que libera multi-loja). */

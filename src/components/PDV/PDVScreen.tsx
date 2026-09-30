@@ -56,7 +56,11 @@ const SEM_SPINNER_NATIVO =
  * - Permite vincular um cliente (opcional).
  */
 export function PDVScreen() {
-  const { tenant } = useTenant();
+  const { tenant, usuarioAtual } = useTenant();
+  // Mesma política que o servidor aplica (server/src/config/planos.ts): a tela só
+  // evita o erro, quem garante a regra é a API.
+  const podeAlterarPreco = usuarioAtual?.papel !== 'OPERADOR_CAIXA';
+  const descontoMaximo = usuarioAtual?.papel === 'OPERADOR_CAIXA' ? 5 : usuarioAtual?.papel === 'GERENTE' ? 20 : 100;
   const toast = useToast();
 
   const [caixa, setCaixa] = useState<Caixa | null>(null);
@@ -153,9 +157,9 @@ export function PDVScreen() {
     };
   }, [termoCliente]);
 
-  async function handleAbrirCaixa(valorAbertura: number) {
+  async function handleAbrirCaixa(valorAbertura: number, senha?: string) {
     try {
-      await abrirCaixa(valorAbertura);
+      await abrirCaixa(valorAbertura, senha);
       toast.sucesso('Caixa aberto.');
       await carregarCaixa();
       await carregarHistorico();
@@ -480,10 +484,12 @@ export function PDVScreen() {
                           min={0}
                           step={0.01}
                           value={item.precoUnitario === 0 ? '' : item.precoUnitario}
+                          disabled={!podeAlterarPreco}
+                          title={podeAlterarPreco ? undefined : 'Só gerente ou administrador altera o preço'}
                           onChange={(e) => alterarPrecoItem(item.produto.id, Number(e.target.value) || 0)}
                           aria-label={`Preço unitário de ${item.produto.nome}`}
                           className={[
-                            'w-16 rounded-md border border-ink-600 bg-ink-700 px-1.5 py-0.5 font-mono text-ink-100 focus:border-tenant focus:outline-none',
+                            'w-16 rounded-md border border-ink-600 bg-ink-700 px-1.5 py-0.5 font-mono text-ink-100 focus:border-tenant focus:outline-none disabled:cursor-not-allowed disabled:opacity-60',
                             SEM_SPINNER_NATIVO,
                           ].join(' ')}
                         />
@@ -614,16 +620,16 @@ export function PDVScreen() {
                   <input
                     type="number"
                     min={0}
-                    max={100}
+                    max={descontoMaximo}
                     value={descontoPercentual === 0 ? '' : descontoPercentual}
-                    onChange={(e) => setDescontoPercentual(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+                    onChange={(e) => setDescontoPercentual(Math.min(descontoMaximo, Math.max(0, Number(e.target.value) || 0)))}
                     aria-label="Percentual de desconto"
                     className={['w-9 bg-transparent text-right font-mono text-ink-100 outline-none', SEM_SPINNER_NATIVO].join(' ')}
                   />
                   <span className="text-ink-400">%</span>
                 </div>
                 <button
-                  onClick={() => setDescontoPercentual((p) => Math.min(100, p + 1))}
+                  onClick={() => setDescontoPercentual((p) => Math.min(descontoMaximo, p + 1))}
                   className="h-7 w-7 rounded-md bg-ink-700 text-ink-100 hover:bg-ink-600"
                   aria-label="Aumentar desconto"
                 >

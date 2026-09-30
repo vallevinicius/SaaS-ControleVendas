@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 
 export const estoqueRouter = Router();
-estoqueRouter.use(requireAuth);
+estoqueRouter.use(requireAuth, requerirTela(['estoque']));
 
 const entradaSchema = z.object({
   productId: z.string().min(1),

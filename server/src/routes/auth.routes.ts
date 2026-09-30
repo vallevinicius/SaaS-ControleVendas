@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { assinarToken, requireAuth } from '../middleware/auth.js';
 import { cpfValido, normalizarCnpj } from '../lib/documentos.js';
+import { emitirSessao, renovarSessao, revogarSessao } from '../lib/sessao.js';
+import { mensagemDeValidacao, senhaForte, VERSAO_TERMOS } from '../lib/senha.js';
 import { calcularTrialExpiraEm, LIMITES_POR_PLANO, motivoAcessoExpirado } from '../config/planos.js';
 
 export const authRouter = Router();
@@ -31,13 +33,15 @@ const registerSchema = z.object({
   cpfAdmin: textoOpcional,
   telefoneAdmin: textoOpcional,
   email: z.string().email(),
-  senha: z.string().min(6),
+  senha: senhaForte,
+  /** Consentimento explícito: o servidor não cria a conta sem ele. */
+  aceitouTermos: z.literal(true, { errorMap: () => ({ message: 'É preciso aceitar os Termos de Uso e a Política de Privacidade.' }) }),
 });
 
 authRouter.post('/register', async (req, res) => {
   const parse = registerSchema.safeParse(req.body);
   if (!parse.success) {
-    return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
+    return res.status(400).json({ erro: mensagemDeValidacao(parse.error), detalhes: parse.error.flatten() });
   }
   const {
     nomeFantasia,
@@ -126,14 +130,15 @@ authRouter.post('/register', async (req, res) => {
         senhaHash,
         papel: 'ADMIN',
         raiz: true,
+        aceiteTermosEm: new Date(),
+        aceiteTermosVersao: VERSAO_TERMOS,
       },
     });
     await tx.categoria.create({ data: { tenantId: tenant.id, nome: 'Geral' } });
     return { tenant, usuario };
   });
 
-  const token = assinarToken({ id: usuario.id, tenantId: tenant.id, papel: usuario.papel });
-  res.status(201).json({ token });
+  res.status(201).json(await emitirSessao(usuario, req));
 });
 
 const loginSchema = z.object({
@@ -169,8 +174,26 @@ authRouter.post('/login', async (req, res) => {
     return res.status(401).json({ erro: 'E-mail ou senha inválidos.' });
   }
 
-  const token = assinarToken({ id: usuario.id, tenantId: usuario.tenantId, papel: usuario.papel });
-  res.json({ token });
+  res.json(await emitirSessao(usuario, req));
+});
+
+const refreshSchema = z.object({ refreshToken: z.string().min(20), tenantId: z.string().optional() });
+
+/** Renova a sessão: troca o token de renovação por um par novo. Sem login, pois
+ * o próprio token de renovação é a credencial. */
+authRouter.post('/refresh', async (req, res) => {
+  const parse = refreshSchema.safeParse(req.body);
+  if (!parse.success) return res.status(400).json({ erro: 'Requisição inválida.' });
+
+  const r = await renovarSessao(parse.data.refreshToken, req, parse.data.tenantId, possuiAcessoALoja);
+  if (!r.ok) return res.status(401).json({ erro: 'Sessão expirada. Entre novamente.' });
+  res.json({ token: r.token, refreshToken: r.refreshToken });
+});
+
+authRouter.post('/logout', async (req, res) => {
+  const parse = refreshSchema.pick({ refreshToken: true }).safeParse(req.body);
+  if (parse.success) await revogarSessao(parse.data.refreshToken);
+  res.status(204).end();
 });
 
 /** Confere se o usuário pode acessar a loja `tenantId`: é a loja de origem
@@ -295,6 +318,6 @@ authRouter.post('/trocar-loja', requireAuth, async (req, res) => {
   const temAcesso = await possuiAcessoALoja(usuario.id, usuario.tenantId, parse.data.tenantId);
   if (!temAcesso) return res.status(403).json({ erro: 'Você não tem acesso a essa loja.' });
 
-  const token = assinarToken({ id: usuario.id, tenantId: parse.data.tenantId, papel: usuario.papel });
+  const token = assinarToken({ id: usuario.id, tenantId: parse.data.tenantId, papel: usuario.papel, tv: usuario.tokenVersion });
   res.json({ token });
 });

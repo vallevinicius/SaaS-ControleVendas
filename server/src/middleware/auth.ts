@@ -8,6 +8,11 @@ export interface UsuarioAutenticado {
   tenantId: string;
   papel: 'ADMIN' | 'GERENTE' | 'OPERADOR_CAIXA';
   tipo?: undefined;
+  /** Versão das sessões do usuário quando o token foi emitido (ver Usuario.tokenVersion). */
+  tv?: number;
+  /** Preenchidos por requireAuth a partir do banco (não vêm no token, que pode estar velho). */
+  raiz?: boolean;
+  permissoes?: unknown;
 }
 
 export interface AdminAutenticado {
@@ -31,12 +36,13 @@ if (!JWT_SECRET) {
 }
 
 export function assinarToken(payload: UsuarioAutenticado): string {
-  return jwt.sign(payload, JWT_SECRET as string, { expiresIn: '7d' });
+  // Curto de propósito: a sessão longa vem do token de renovação (lib/sessao.ts).
+  return jwt.sign(payload, JWT_SECRET as string, { expiresIn: (process.env.ACCESS_TOKEN_TTL ?? '30m') as jwt.SignOptions['expiresIn'] });
 }
 
 export function assinarTokenAdmin(payload: { id: string }): string {
   const claims: AdminAutenticado = { id: payload.id, tipo: 'PLATAFORMA' };
-  return jwt.sign(claims, JWT_SECRET as string, { expiresIn: '7d' });
+  return jwt.sign(claims, JWT_SECRET as string, { expiresIn: '2h' });
 }
 
 function extrairToken(req: Request): string | null {
@@ -56,20 +62,43 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   let payload: UsuarioAutenticado | AdminAutenticado;
   try {
     payload = jwt.verify(token, JWT_SECRET as string) as UsuarioAutenticado | AdminAutenticado;
-  } catch {
-    return res.status(401).json({ erro: 'Token inválido ou expirado.' });
+  } catch (erro) {
+    // "Expirado" é o caso normal a cada 30 min: o front renova a sessão e repete.
+    if (erro instanceof jwt.TokenExpiredError) return res.status(401).json({ erro: 'Sessão expirada.', codigo: 'TOKEN_EXPIRADO' });
+    return res.status(401).json({ erro: 'Token inválido.' });
   }
-  if ('tipo' in payload && payload.tipo === 'PLATAFORMA') {
+  // Tokens do painel admin (e o desafio do 2FA) nunca valem como sessão de loja.
+  if ('tipo' in payload && payload.tipo) {
     return res.status(403).json({ erro: 'Token de admin não pode ser usado aqui.' });
   }
 
+  // Dados frescos do banco (papel, permissões, conta principal): o token pode ter
+  // dias e não reflete mudanças feitas depois do login.
+  let usuarioAtual: { papel: UsuarioAutenticado['papel']; raiz: boolean; permissoes: unknown };
   try {
-    const loja = await prisma.tenant.findUnique({
-      where: { id: (payload as UsuarioAutenticado).tenantId },
-      select: { ativo: true, empresa: { select: { trialExpiraEm: true, assinaturaStatus: true, acessoAte: true } } },
-    });
-    if (loja && !loja.ativo) {
+    const { id: usuarioId, tenantId } = payload as UsuarioAutenticado;
+    const [loja, usuario] = await Promise.all([
+      prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: {
+          ativo: true,
+          empresa: { select: { ativo: true, trialExpiraEm: true, assinaturaStatus: true, acessoAte: true } },
+        },
+      }),
+      prisma.usuario.findUnique({ where: { id: usuarioId }, select: { ativo: true, papel: true, raiz: true, permissoes: true, tokenVersion: true } }),
+    ]);
+    // O token vale até expirar, então o estado de quem o usa é conferido a cada
+    // requisição: usuário desativado, loja desativada ou empresa suspensa perdem
+    // o acesso na hora, não só no próximo login.
+    if (!usuario?.ativo || !loja || (payload as UsuarioAutenticado).tv !== undefined && (payload as UsuarioAutenticado).tv !== usuario.tokenVersion) {
+      return res.status(401).json({ erro: 'Sessão inválida. Entre novamente.' });
+    }
+    usuarioAtual = { papel: usuario.papel, raiz: usuario.raiz, permissoes: usuario.permissoes };
+    if (!loja.ativo) {
       return res.status(403).json({ erro: 'Esta loja foi desativada.' });
+    }
+    if (!loja.empresa.ativo) {
+      return res.status(403).json({ erro: 'Esta empresa está suspensa. Fale com o suporte.' });
     }
     // Teste grátis acabado ou assinatura cancelada com o período já vencido: o
     // login continua valendo, mas só a sessão e a tela do plano funcionam, pra
@@ -82,7 +111,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return next(erro);
   }
 
-  req.usuario = payload as UsuarioAutenticado;
+  req.usuario = { ...(payload as UsuarioAutenticado), papel: usuarioAtual.papel, raiz: usuarioAtual.raiz, permissoes: usuarioAtual.permissoes };
   next();
 }
 

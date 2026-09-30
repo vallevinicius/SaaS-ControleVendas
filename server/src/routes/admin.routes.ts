@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import jwt from 'jsonwebtoken';
+import QRCode from 'qrcode';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -6,6 +8,9 @@ import { prisma } from '../lib/prisma.js';
 import { assinarTokenAdmin, requirePlatformAdmin } from '../middleware/auth.js';
 import { calcularTrialExpiraEm } from '../config/planos.js';
 import { cpfValido, normalizarCnpj } from '../lib/documentos.js';
+import { mensagemDeValidacao, senhaForte } from '../lib/senha.js';
+import { gerarSegredoTotp, urlOtpauth, verificarTotp } from '../lib/totp.js';
+import { revogarTodasAsSessoes } from '../lib/sessao.js';
 import { operacoesExcluirLojas, usuarioComHistoricoEmOutraLoja } from '../lib/exclusao.js';
 
 export const adminRouter = Router();
@@ -32,11 +37,103 @@ adminRouter.post('/login', async (req, res) => {
     return res.status(401).json({ erro: 'E-mail ou senha inválidos.' });
   }
 
+  // Com verificação em duas etapas ativa, a senha sozinha não entra: devolve um
+  // desafio de vida curta que só serve pra /login/2fa junto com o código do app.
+  if (admin.totpAtivo) {
+    const desafio = jwt.sign({ id: admin.id, tipo: 'ADMIN_2FA' }, process.env.JWT_SECRET as string, { expiresIn: '5m' });
+    return res.json({ precisaCodigo: true, desafio });
+  }
+
   const token = assinarTokenAdmin({ id: admin.id });
-  res.json({ token, admin: { id: admin.id, nome: admin.nome, email: admin.email } });
+  res.json({ token, admin: { id: admin.id, nome: admin.nome, email: admin.email }, totpAtivo: false });
+});
+
+/** Passos do TOTP já usados (admin -> último passo aceito): o mesmo código não
+ * vale duas vezes, mesmo dentro da janela de 30 s. */
+const ultimoPassoUsado = new Map<string, number>();
+
+function aceitarCodigo(adminId: string, segredo: string, codigo: string): boolean {
+  const passo = verificarTotp(segredo, codigo);
+  if (passo === null) return false;
+  if ((ultimoPassoUsado.get(adminId) ?? -1) >= passo) return false;
+  ultimoPassoUsado.set(adminId, passo);
+  return true;
+}
+
+const doisFatoresSchema = z.object({ desafio: z.string().min(10), codigo: z.string().min(6).max(10) });
+
+adminRouter.post('/login/2fa', async (req, res) => {
+  const parse = doisFatoresSchema.safeParse(req.body);
+  if (!parse.success) return res.status(400).json({ erro: 'Informe o código do aplicativo.' });
+
+  let adminId: string;
+  try {
+    const dados = jwt.verify(parse.data.desafio, process.env.JWT_SECRET as string) as { id: string; tipo: string };
+    if (dados.tipo !== 'ADMIN_2FA') throw new Error('desafio inválido');
+    adminId = dados.id;
+  } catch {
+    return res.status(401).json({ erro: 'A verificação expirou. Entre de novo com e-mail e senha.' });
+  }
+
+  const admin = await prisma.adminPlataforma.findUnique({ where: { id: adminId } });
+  if (!admin?.totpAtivo || !admin.totpSegredo || !aceitarCodigo(admin.id, admin.totpSegredo, parse.data.codigo)) {
+    return res.status(401).json({ erro: 'Código inválido ou já utilizado.' });
+  }
+  res.json({ token: assinarTokenAdmin({ id: admin.id }), admin: { id: admin.id, nome: admin.nome, email: admin.email }, totpAtivo: true });
 });
 
 adminRouter.use(requirePlatformAdmin);
+
+// ---- Verificação em duas etapas do próprio admin ----
+
+adminRouter.get('/2fa', async (req, res) => {
+  const admin = await prisma.adminPlataforma.findUnique({ where: { id: req.admin!.id }, select: { totpAtivo: true } });
+  res.json({ ativo: Boolean(admin?.totpAtivo) });
+});
+
+/** Gera um segredo novo e o QR code pra cadastrar no aplicativo. Só passa a valer
+ * depois de /2fa/ativar com um código correto. */
+adminRouter.post('/2fa/iniciar', async (req, res) => {
+  const admin = await prisma.adminPlataforma.findUnique({ where: { id: req.admin!.id } });
+  if (!admin) return res.status(404).json({ erro: 'Admin não encontrado.' });
+  if (admin.totpAtivo) return res.status(409).json({ erro: 'A verificação em duas etapas já está ativa.' });
+
+  const segredo = gerarSegredoTotp();
+  await prisma.adminPlataforma.update({ where: { id: admin.id }, data: { totpSegredo: segredo } });
+  const otpauth = urlOtpauth(segredo, admin.email);
+  res.json({ segredo, otpauth, qrCode: await QRCode.toDataURL(otpauth, { margin: 1, width: 220 }) });
+});
+
+const codigoSchema = z.object({ codigo: z.string().min(6).max(10) });
+
+adminRouter.post('/2fa/ativar', async (req, res) => {
+  const parse = codigoSchema.safeParse(req.body);
+  if (!parse.success) return res.status(400).json({ erro: 'Informe o código do aplicativo.' });
+
+  const admin = await prisma.adminPlataforma.findUnique({ where: { id: req.admin!.id } });
+  if (!admin?.totpSegredo) return res.status(409).json({ erro: 'Comece pela configuração do aplicativo.' });
+  if (!aceitarCodigo(admin.id, admin.totpSegredo, parse.data.codigo)) {
+    return res.status(400).json({ erro: 'Código incorreto. Confira o aplicativo e tente de novo.' });
+  }
+  await prisma.adminPlataforma.update({ where: { id: admin.id }, data: { totpAtivo: true } });
+  res.json({ ativo: true });
+});
+
+const desativarSchema = z.object({ senha: z.string().min(1), codigo: z.string().min(6).max(10) });
+
+/** Desligar exige senha E código: quem só roubou o token de sessão não consegue. */
+adminRouter.post('/2fa/desativar', async (req, res) => {
+  const parse = desativarSchema.safeParse(req.body);
+  if (!parse.success) return res.status(400).json({ erro: 'Informe a senha e o código.' });
+
+  const admin = await prisma.adminPlataforma.findUnique({ where: { id: req.admin!.id } });
+  if (!admin?.totpAtivo || !admin.totpSegredo) return res.status(409).json({ erro: 'A verificação em duas etapas não está ativa.' });
+  if (!(await bcrypt.compare(parse.data.senha, admin.senhaHash)) || !aceitarCodigo(admin.id, admin.totpSegredo, parse.data.codigo)) {
+    return res.status(400).json({ erro: 'Senha ou código incorretos.' });
+  }
+  await prisma.adminPlataforma.update({ where: { id: admin.id }, data: { totpAtivo: false, totpSegredo: null } });
+  res.json({ ativo: false });
+});
 
 adminRouter.get('/empresas', async (_req, res) => {
   const empresas = await prisma.empresa.findMany({
@@ -154,13 +251,13 @@ const novaEmpresaSchema = z.object({
   cpfAdmin: textoOpcional,
   telefoneAdmin: textoOpcional,
   emailAdmin: z.string().email(),
-  senhaAdmin: z.string().min(6),
+  senhaAdmin: senhaForte,
 });
 
 adminRouter.post('/empresas', async (req, res) => {
   const parse = novaEmpresaSchema.safeParse(req.body);
   if (!parse.success) {
-    return res.status(400).json({ erro: 'Dados inválidos.', detalhes: parse.error.flatten() });
+    return res.status(400).json({ erro: mensagemDeValidacao(parse.error), detalhes: parse.error.flatten() });
   }
   const d = parse.data;
 
@@ -358,6 +455,8 @@ adminRouter.post('/usuarios/:id/resetar-senha', async (req, res) => {
   const senhaHash = await bcrypt.hash(senhaTemporaria, 10);
 
   await prisma.usuario.update({ where: { id: usuario.id }, data: { senhaHash } });
+  // Senha nova: as sessões abertas com a senha antiga caem na hora.
+  await revogarTodasAsSessoes(usuario.id);
 
   res.json({ senhaTemporaria });
 });

@@ -159,8 +159,15 @@ model Usuario {
   /// ficar sem um login que funcione.
   raiz      Boolean      @default(false)
   ativo     Boolean      @default(true)
+  /// Sobe quando as sessões precisam cair na hora (senha redefinida, "sair de
+  /// todos os dispositivos"): tokens com versão antiga deixam de valer.
+  tokenVersion      Int       @default(0)
+  /// Aceite dos Termos de Uso/Privacidade no cadastro (prova de consentimento, LGPD).
+  aceiteTermosEm     DateTime?
+  aceiteTermosVersao String?
   criadoEm  DateTime     @default(now())
 
+  sessoes                SessaoRefresh[]
   tenant                 Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   transacoes             Transacao[]
   lancamentosFinanceiros LancamentoFinanceiro[]
@@ -357,5 +364,26 @@ model AdminPlataforma {
   nome      String
   email     String   @unique
   senhaHash String
+  /// Segredo TOTP (app autenticador). Só vale depois de `totpAtivo`.
+  totpSegredo String?
+  totpAtivo   Boolean  @default(false)
   criadoEm  DateTime @default(now())
+}
+
+/// Sessão renovável do app: o token de acesso dura pouco e este registro (guardado
+/// só como hash) permite renová-lo. Cada renovação gira o token; reutilizar um já
+/// usado derruba todas as sessões da pessoa (sinal de roubo).
+model SessaoRefresh {
+  id        String    @id @default(uuid())
+  usuarioId String
+  tokenHash String    @unique
+  expiraEm  DateTime
+  revogadaEm DateTime?
+  criadoEm  DateTime  @default(now())
+  ip        String?
+  userAgent String?   @db.VarChar(255)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
 }

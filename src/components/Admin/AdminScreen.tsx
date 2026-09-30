@@ -13,6 +13,7 @@ import {
   adminDefinirUsuarioAtivo,
   adminExcluirEmpresa,
   adminExcluirLoja,
+  admin2faStatus,
   adminListarEmpresas,
   adminResetarSenha,
   getAdminToken,
@@ -23,6 +24,7 @@ import { AdminResumo, emTrial } from './AdminResumo';
 import { EmpresaItem, type AcoesEmpresa } from './EmpresaItem';
 import { ModalExcluir, ModalSenhaGerada } from './AdminModais';
 import { NovaEmpresaModal } from './NovaEmpresaModal';
+import { SegurancaModal } from './SegurancaModal';
 
 type Filtro = 'todas' | 'ativas' | 'suspensas' | 'trial';
 
@@ -43,6 +45,8 @@ export function AdminScreen() {
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [plano, setPlano] = useState<PlanoSaaS | 'todos'>('todos');
   const [criando, setCriando] = useState(false);
+  const [seguranca, setSeguranca] = useState(false);
+  const [doisFatores, setDoisFatores] = useState<boolean | null>(null);
   const [excluirEmpresa, setExcluirEmpresa] = useState<EmpresaAdmin | null>(null);
   const [excluirLoja, setExcluirLoja] = useState<{ empresa: EmpresaAdmin; loja: LojaAdmin } | null>(null);
   const [senhaGerada, setSenhaGerada] = useState<{ nome: string; senha: string } | null>(null);
@@ -68,6 +72,7 @@ export function AdminScreen() {
   useEffect(() => {
     if (!getAdminToken()) return navigate('/login', { replace: true });
     carregar();
+    admin2faStatus().then((r) => setDoisFatores(r.ativo)).catch(() => undefined);
   }, [carregar, navigate]);
 
   const visiveis = useMemo(() => {
@@ -148,12 +153,20 @@ export function AdminScreen() {
           </div>
           <div className="flex items-center gap-4">
             <ThemeToggle />
+            <button onClick={() => setSeguranca(true)} className="text-sm text-ink-400 hover:text-ink-200">Segurança</button>
             <button onClick={sair} className="text-sm text-ink-400 hover:text-ink-200">Sair</button>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-5 py-8">
+        {doisFatores === false && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <p className="text-sm text-amber-300">Este painel dá acesso aos dados de todos os clientes. Proteja-o com a verificação em duas etapas.</p>
+            <button onClick={() => setSeguranca(true)} className="rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-semibold text-black hover:opacity-90">Ativar agora</button>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-ink-100">Empresas e lojas</h1>
@@ -203,6 +216,7 @@ export function AdminScreen() {
         )}
       </main>
 
+      {seguranca && <SegurancaModal onFechar={() => setSeguranca(false)} onMudou={setDoisFatores} />}
       {criando && <NovaEmpresaModal onFechar={() => setCriando(false)} onCriada={() => { setCriando(false); carregar(); }} />}
 
       {excluirEmpresa && (

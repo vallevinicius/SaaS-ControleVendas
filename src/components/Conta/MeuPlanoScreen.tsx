@@ -100,7 +100,7 @@ export function MeuPlanoScreen() {
       Promise.all([getUsuarios(), searchProducts('', 1, 1)]).then(([usuarios, produtos]) => {
         setTotalUsuarios(usuarios.length);
         setTotalProdutos(produtos.total);
-      });
+      }).catch(() => undefined); // sem permissão para ver o uso: a tela segue sem as barras
     }
     carregar().catch((e) => toast.erro(e instanceof Error ? e.message : 'Erro ao carregar o plano.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/contexts/ToastContext';
-import { ErroApi, loginAdmin } from '@/services/apiService';
+import { ErroApi, confirmarCodigoAdmin, loginAdmin } from '@/services/apiService';
 import { AuthLayout } from './AuthLayout';
 import { AuthInput } from './AuthInput';
 import { AuthCheckbox } from './AuthCheckbox';
@@ -26,6 +26,9 @@ export function LoginScreen() {
   const [senha, setSenha] = useState('');
   const [lembrar, setLembrar] = useState(() => Boolean(lerEmailLembrado()));
   const [enviando, setEnviando] = useState(false);
+  // Admin com verificação em duas etapas: depois da senha, pede o código do app.
+  const [desafioAdmin, setDesafioAdmin] = useState<string | null>(null);
+  const [codigo, setCodigo] = useState('');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -50,14 +53,75 @@ export function LoginScreen() {
         return;
       }
       try {
-        await loginAdmin(email, senha);
+        const { desafio } = await loginAdmin(email, senha);
+        if (desafio) {
+          setDesafioAdmin(desafio);
+          return;
+        }
         navigate('/admin', { replace: true });
-      } catch {
-        toast.erro('E-mail ou senha inválidos.');
+      } catch (erroAdmin) {
+        // 429 = limite de tentativas: mostra o aviso do servidor em vez de "senha inválida".
+        toast.erro(erroAdmin instanceof ErroApi && erroAdmin.status === 429 ? erroAdmin.message : 'E-mail ou senha inválidos.');
       }
     } finally {
       setEnviando(false);
     }
+  }
+
+  async function handleCodigo(e: FormEvent) {
+    e.preventDefault();
+    if (!desafioAdmin) return;
+    setEnviando(true);
+    try {
+      await confirmarCodigoAdmin(desafioAdmin, codigo);
+      navigate('/admin', { replace: true });
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Código inválido.');
+      // Desafio vencido (5 min): volta pra senha.
+      if (erro instanceof ErroApi && erro.status === 401 && /expirou/i.test(erro.message)) {
+        setDesafioAdmin(null);
+        setSenha('');
+      }
+      setCodigo('');
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (desafioAdmin) {
+    return (
+      <AuthLayout
+        titulo="Verificação em duas etapas"
+        subtitulo="Digite o código de 6 dígitos do seu aplicativo autenticador"
+        rodape={
+          <button onClick={() => { setDesafioAdmin(null); setSenha(''); setCodigo(''); }} className="font-medium text-tenant hover:underline">
+            Voltar
+          </button>
+        }
+      >
+        <form onSubmit={handleCodigo} className="space-y-4">
+          <AuthInput
+            label="Código"
+            required
+            autoFocus
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder="000000"
+            value={codigo}
+            onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
+            icone={<IconeSenha className="h-4 w-4" />}
+          />
+          <button
+            type="submit"
+            disabled={enviando || codigo.length !== 6}
+            className="w-full rounded-lg bg-tenant py-2.5 text-sm font-semibold text-tenant-foreground shadow-sm shadow-tenant/20 transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {enviando ? 'Verificando…' : 'Confirmar'}
+          </button>
+        </form>
+      </AuthLayout>
+    );
   }
 
   return (

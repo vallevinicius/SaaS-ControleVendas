@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { requireFeaturePlano } from '../middleware/plano.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const financeiroRouter = Router();
-financeiroRouter.use(requireAuth, requireFeaturePlano('financeiro'));
+financeiroRouter.use(requireAuth, requerirTela(['financeiro']), requireFeaturePlano('financeiro'));
 
 /**
  * Datas vêm como "YYYY-MM-DD" e o Date as interpreta como meia-noite UTC —

@@ -146,7 +146,7 @@ export function NovaEmpresaModal({ onFechar, onCriada }: { onFechar: () => void;
               value={f.telefoneAdmin} onChange={(e) => set('telefoneAdmin', mascararTelefone(e.target.value))} />
           </div>
           <div className="sm:col-span-2"><AuthInput label="E-mail de acesso *" type="email" required {...campo('emailAdmin')} /></div>
-          <div className="sm:col-span-2"><AuthInput label="Senha *" type="password" required minLength={6} alternarVisibilidade {...campo('senhaAdmin')} /></div>
+          <div className="sm:col-span-2"><AuthInput label="Senha *" type="password" required minLength={8} placeholder="8+ caracteres, com letras e números" alternarVisibilidade {...campo('senhaAdmin')} /></div>
         </div>
 
         <div className="flex justify-end gap-3 border-t border-ink-700 px-6 py-4">

@@ -169,10 +169,12 @@ export function RegisterScreen() {
     if (!cnpjValido(cnpj)) return toast.erro('CNPJ inválido. Confira os números.');
     if (cpfAdmin && !cpfValido(cpfAdmin)) return toast.erro('CPF do responsável inválido.');
     if (senha !== confirmarSenha) return toast.erro('As senhas não conferem.');
+    if (senha.length < 8 || !/[A-Za-z]/.test(senha) || !/\d/.test(senha)) return toast.erro('A senha precisa ter 8 ou mais caracteres, com letras e números.');
 
     setEnviando(true);
     try {
       await registrar({
+        aceitouTermos,
         nomeFantasia,
         razaoSocial,
         cnpj,
@@ -481,7 +483,8 @@ export function RegisterScreen() {
                 label="Senha *"
                 type="password"
                 required
-                minLength={6}
+                minLength={8}
+                placeholder="8+ caracteres, com letras e números"
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 icone={<IconeSenha className="h-4 w-4" />}
@@ -493,7 +496,7 @@ export function RegisterScreen() {
                 label="Confirmar senha *"
                 type="password"
                 required
-                minLength={6}
+                minLength={8} placeholder="8+ caracteres, com letras e números"
                 value={confirmarSenha}
                 onChange={(e) => setConfirmarSenha(e.target.value)}
                 icone={<IconeSenha className="h-4 w-4" />}

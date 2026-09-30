@@ -75,6 +75,37 @@ período já pago (`Empresa.acessoAte`). Com o teste grátis ou a assinatura
 vencidos, o login funciona mas só a tela do plano abre (a API responde 402
 `ACESSO_EXPIRADO` nas demais rotas).
 
+### 1.3. Segurança e operação
+
+- **Permissões no servidor**: cada rota confere a tela liberada ao usuário
+  (`server/src/middleware/permissao.ts`), não só o menu. Papel e permissões são
+  lidos do banco a cada requisição, então mudanças valem na hora.
+- **PDV**: desconto máximo e troca de preço por papel (`POLITICA_PDV` em
+  `server/src/config/planos.ts`): operador 5% e sem alterar preço, gerente 20%,
+  admin livre. Ajustes ficam na auditoria (`venda.ajuste`). A baixa de estoque é
+  condicional, então vendas simultâneas não deixam o saldo negativo.
+- **Sessão**: o token de acesso dura 30 min (`ACCESS_TOKEN_TTL`) e é renovado em
+  silêncio com um token de renovação de 30 dias, guardado só como hash e trocado a
+  cada uso. Reusar um token de renovação já usado derruba todas as sessões da
+  pessoa. Redefinir a senha também derruba as sessões (`Usuario.tokenVersion`).
+- **Senhas**: 8+ caracteres com letra e número (cadastro, novo usuário, nova empresa).
+  O aceite dos Termos é exigido e gravado com data e versão (`Usuario.aceiteTermos*`).
+- **Admin da plataforma**: sessão de 2 h e verificação em duas etapas (TOTP) em
+  *Segurança*, no painel `/admin`. Desligar exige senha e código.
+- **Limites e proteção HTTP**: limite de tentativas no login, cadastro, código 2FA e
+  webhook; CORS só para `APP_URL`/`CORS_ORIGINS`; `helmet`. Atrás de proxy, defina
+  `TRUST_PROXY`.
+- **Monitoramento**: `GET /api/health` (vivo) e `GET /api/health/ready` (vivo + banco
+  respondendo) para um monitor de disponibilidade.
+- **Backup**: `server/scripts/backup-mysql.sh [destino] [dias]` faz `mysqldump`
+  compactado com rotação. Agende no cron e guarde uma cópia fora do servidor.
+
+**Restaurar** (teste isto ao menos uma vez, backup sem restauração testada não conta):
+
+```bash
+gunzip -c totalcontrol_db_AAAAMMDD_HHMMSS.sql.gz | mysql -u USUARIO -p NOME_DO_BANCO
+```
+
 ### 2. Rodar o frontend + backend juntos
 
 Na raiz do projeto:

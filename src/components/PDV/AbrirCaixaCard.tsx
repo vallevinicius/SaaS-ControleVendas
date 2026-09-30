@@ -9,19 +9,22 @@ const SEM_SPINNER_NATIVO =
 interface AbrirCaixaCardProps {
   historico: Caixa[];
   carregandoHistorico: boolean;
-  aoAbrir: (valorAbertura: number) => Promise<void>;
+  aoAbrir: (valorAbertura: number, senha?: string) => Promise<void>;
 }
 
 export function AbrirCaixaCard({ historico, carregandoHistorico, aoAbrir }: AbrirCaixaCardProps) {
   const { tenant } = useTenant();
   const [valorAbertura, setValorAbertura] = useState<number>(0);
+  const [senha, setSenha] = useState('');
+  const exigirSenha = Boolean(tenant?.configuracoes.exigirSenhaAoAbrirCaixa);
   const [enviando, setEnviando] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setEnviando(true);
     try {
-      await aoAbrir(valorAbertura);
+      await aoAbrir(valorAbertura, exigirSenha ? senha : undefined);
+      setSenha('');
     } finally {
       setEnviando(false);
     }
@@ -48,6 +51,20 @@ export function AbrirCaixaCard({ historico, carregandoHistorico, aoAbrir }: Abri
             />
           </div>
         </label>
+
+        {exigirSenha && (
+          <label className="mx-auto mt-4 block max-w-[200px] text-left text-sm text-ink-300">
+            Confirme sua senha
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-700 px-3 py-2 text-ink-100 focus:border-tenant focus:outline-none"
+            />
+          </label>
+        )}
 
         <button
           type="submit"

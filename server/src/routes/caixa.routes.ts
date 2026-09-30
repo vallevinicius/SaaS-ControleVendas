@@ -1,11 +1,13 @@
 import { Router } from 'express';
+import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requerirAdmin, requerirTela } from '../middleware/permissao.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const caixaRouter = Router();
-caixaRouter.use(requireAuth);
+caixaRouter.use(requireAuth, requerirTela(['pdv']));
 
 function serializarCaixa(c: {
   id: string;
@@ -97,13 +99,25 @@ caixaRouter.get('/atual', async (req, res) => {
   res.json({ ...serializarCaixa(caixa), resumo });
 });
 
-const abrirSchema = z.object({ valorAbertura: z.number().nonnegative() });
+const abrirSchema = z.object({ valorAbertura: z.number().nonnegative(), senha: z.string().optional() });
 
 caixaRouter.post('/abrir', async (req, res) => {
   const { tenantId, id: usuarioId } = req.usuario!;
   const parse = abrirSchema.safeParse(req.body);
   if (!parse.success) {
     return res.status(400).json({ erro: 'Informe o valor de abertura.' });
+  }
+
+  // Loja configurada pra exigir senha na abertura (Editar loja > Operação): quem
+  // abre precisa confirmar a própria senha, pra ninguém abrir o caixa na sessão
+  // que outra pessoa deixou logada.
+  const loja = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { exigirSenhaAoAbrirCaixa: true } });
+  if (loja?.exigirSenhaAoAbrirCaixa) {
+    const solicitante = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { senhaHash: true } });
+    const senhaConfere = parse.data.senha && solicitante ? await bcrypt.compare(parse.data.senha, solicitante.senhaHash) : false;
+    if (!senhaConfere) {
+      return res.status(403).json({ erro: 'Confirme a sua senha para abrir o caixa.', codigo: 'SENHA_CAIXA' });
+    }
   }
 
   const jaAberto = await prisma.caixa.findFirst({ where: { tenantId, status: 'ABERTO' } });

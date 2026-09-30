@@ -46,29 +46,76 @@ import type {
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 const CHAVE_TOKEN = 'total_control_token';
+const CHAVE_REFRESH = 'total_control_refresh';
 
 export function getToken(): string | null {
   return localStorage.getItem(CHAVE_TOKEN);
 }
 
-export function setToken(token: string): void {
+/** Guarda a sessão: token de acesso (curto) e, quando a API manda, o de renovação. */
+export function setToken(token: string, refreshToken?: string): void {
   localStorage.setItem(CHAVE_TOKEN, token);
+  if (refreshToken) localStorage.setItem(CHAVE_REFRESH, refreshToken);
 }
 
 export function limparToken(): void {
   localStorage.removeItem(CHAVE_TOKEN);
+  localStorage.removeItem(CHAVE_REFRESH);
 }
 
 export class ErroApi extends Error {
   constructor(
     message: string,
     public status: number,
+    public codigo?: string,
   ) {
     super(message);
   }
 }
 
-async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
+/** Loja em que a pessoa estava, lida do token de acesso (mesmo vencido), pra a
+ * renovação manter a mesma loja em vez de voltar pra loja de origem. */
+function tenantDoToken(token: string | null): string | undefined {
+  try {
+    const corpo = token?.split('.')[1];
+    if (!corpo) return undefined;
+    const json = JSON.parse(atob(corpo.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof json.tenantId === 'string' ? json.tenantId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let renovacaoEmAndamento: Promise<boolean> | null = null;
+
+/** Troca o token de renovação por um par novo. Várias requisições que vencem
+ * juntas compartilham UMA renovação (senão a segunda usaria um token já trocado
+ * e a API derrubaria a sessão como suspeita de roubo). */
+function renovarSessao(): Promise<boolean> {
+  const refreshToken = localStorage.getItem(CHAVE_REFRESH);
+  if (!refreshToken) return Promise.resolve(false);
+
+  renovacaoEmAndamento ??= (async () => {
+    try {
+      const resposta = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken, tenantId: tenantDoToken(getToken()) }),
+      });
+      if (!resposta.ok) return false;
+      const { token, refreshToken: novo } = await resposta.json();
+      setToken(token, novo);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      renovacaoEmAndamento = null;
+    }
+  })();
+  return renovacaoEmAndamento;
+}
+
+async function requisitar<T>(caminho: string, opcoes: RequestInit = {}, jaRenovou = false): Promise<T> {
   const token = getToken();
   const resposta = await fetch(`${API_URL}${caminho}`, {
     ...opcoes,
@@ -81,13 +128,19 @@ async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise
 
   if (!resposta.ok) {
     let mensagem = `Erro ${resposta.status} ao chamar ${caminho}`;
+    let codigo: string | undefined;
     try {
       const corpo = await resposta.json();
       if (corpo?.erro) mensagem = corpo.erro;
+      codigo = corpo?.codigo;
     } catch {
       // corpo sem JSON — mantém mensagem genérica
     }
-    throw new ErroApi(mensagem, resposta.status);
+    // Token de acesso vencido (a cada ~30 min): renova em silêncio e repete a chamada uma vez.
+    if (resposta.status === 401 && codigo === 'TOKEN_EXPIRADO' && !jaRenovou && (await renovarSessao())) {
+      return requisitar<T>(caminho, opcoes, true);
+    }
+    throw new ErroApi(mensagem, resposta.status, codigo);
   }
 
   if (resposta.status === 204) return undefined as T;
@@ -99,14 +152,16 @@ async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise
 // ----------------------------------------------------------------------------
 
 export async function login(email: string, senha: string): Promise<void> {
-  const { token } = await requisitar<{ token: string }>('/auth/login', {
+  const { token, refreshToken } = await requisitar<{ token: string; refreshToken: string }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, senha }),
   });
-  setToken(token);
+  setToken(token, refreshToken);
 }
 
 export interface RegistrarLojaPayload {
+  /** Aceite dos Termos e da Política de Privacidade (a API exige true). */
+  aceitouTermos: boolean;
   nomeFantasia: string;
   razaoSocial: string;
   cnpj: string;
@@ -131,11 +186,11 @@ export interface RegistrarLojaPayload {
 }
 
 export async function registrarLoja(payload: RegistrarLojaPayload): Promise<void> {
-  const { token } = await requisitar<{ token: string }>('/auth/register', {
+  const { token, refreshToken } = await requisitar<{ token: string; refreshToken: string }>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  setToken(token);
+  setToken(token, refreshToken);
 }
 
 export async function getMe(): Promise<{ usuario: Usuario; tenant: Tenant; lojas: LojaResumo[] }> {
@@ -143,6 +198,15 @@ export async function getMe(): Promise<{ usuario: Usuario; tenant: Tenant; lojas
 }
 
 export function logout(): void {
+  // Avisa a API pra invalidar a renovação (sem esperar: sair não pode travar).
+  const refreshToken = localStorage.getItem(CHAVE_REFRESH);
+  if (refreshToken) {
+    fetch(`${API_URL}/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    }).catch(() => undefined);
+  }
   limparToken();
 }
 
@@ -162,26 +226,38 @@ export function limparTokenAdmin(): void {
   localStorage.removeItem(CHAVE_TOKEN_ADMIN);
 }
 
-export async function loginAdmin(email: string, senha: string): Promise<void> {
-  const resposta = await fetch(`${API_URL}/admin/login`, {
+async function enviarLoginAdmin(caminho: string, corpo: unknown): Promise<{ desafio?: string }> {
+  const resposta = await fetch(`${API_URL}/admin${caminho}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, senha }),
+    body: JSON.stringify(corpo),
   });
 
   if (!resposta.ok) {
     let mensagem = 'E-mail ou senha inválidos.';
     try {
-      const corpo = await resposta.json();
-      if (corpo?.erro) mensagem = corpo.erro;
+      const dados = await resposta.json();
+      if (dados?.erro) mensagem = dados.erro;
     } catch {
       // corpo sem JSON — mantém mensagem genérica
     }
     throw new ErroApi(mensagem, resposta.status);
   }
 
-  const { token } = await resposta.json();
-  localStorage.setItem(CHAVE_TOKEN_ADMIN, token);
+  const dados = await resposta.json();
+  // Com a verificação em duas etapas ativa, ainda não há sessão: vem um desafio
+  // que só vale junto com o código do aplicativo (confirmarCodigoAdmin).
+  if (dados.precisaCodigo) return { desafio: dados.desafio };
+  localStorage.setItem(CHAVE_TOKEN_ADMIN, dados.token);
+  return {};
+}
+
+export function loginAdmin(email: string, senha: string): Promise<{ desafio?: string }> {
+  return enviarLoginAdmin('/login', { email, senha });
+}
+
+export async function confirmarCodigoAdmin(desafio: string, codigo: string): Promise<void> {
+  await enviarLoginAdmin('/login/2fa', { desafio, codigo });
 }
 
 async function requisitarAdmin<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
@@ -208,6 +284,22 @@ async function requisitarAdmin<T>(caminho: string, opcoes: RequestInit = {}): Pr
 
   if (resposta.status === 204) return undefined as T;
   return resposta.json() as Promise<T>;
+}
+
+export function admin2faStatus(): Promise<{ ativo: boolean }> {
+  return requisitarAdmin('/2fa');
+}
+
+export function admin2faIniciar(): Promise<{ segredo: string; otpauth: string; qrCode: string }> {
+  return requisitarAdmin('/2fa/iniciar', { method: 'POST' });
+}
+
+export function admin2faAtivar(codigo: string): Promise<{ ativo: boolean }> {
+  return requisitarAdmin('/2fa/ativar', { method: 'POST', body: JSON.stringify({ codigo }) });
+}
+
+export function admin2faDesativar(senha: string, codigo: string): Promise<{ ativo: boolean }> {
+  return requisitarAdmin('/2fa/desativar', { method: 'POST', body: JSON.stringify({ senha, codigo }) });
 }
 
 export function adminListarEmpresas(): Promise<EmpresaAdmin[]> {
@@ -596,8 +688,8 @@ export async function getCaixaAtual(): Promise<Caixa | null> {
   return requisitar('/caixa/atual');
 }
 
-export async function abrirCaixa(valorAbertura: number): Promise<Caixa> {
-  return requisitar('/caixa/abrir', { method: 'POST', body: JSON.stringify({ valorAbertura }) });
+export async function abrirCaixa(valorAbertura: number, senha?: string): Promise<Caixa> {
+  return requisitar('/caixa/abrir', { method: 'POST', body: JSON.stringify({ valorAbertura, senha }) });
 }
 
 export interface FecharCaixaPayload {
